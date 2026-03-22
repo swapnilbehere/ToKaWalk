@@ -130,7 +130,9 @@ IDLE (Porcupine active, low CPU)
 
 - User can speak over the AI mid-response at any time
 - On detection: TTS stops immediately; partial AI response is **flagged as `[interrupted]` in the context array** — it is stored as a turn with `status: "interrupted"` so the LLM knows what it was mid-saying
-- Partial response is **not shown as a complete bubble in Chat Mode UI** — the bubble is removed or marked visually as cut off (e.g. trailing `…`)
+- Partial response is **persisted to the `turns` table** with `status: "interrupted"` — it is kept in the database and in LLM context
+- In Chat Mode, the interrupted bubble remains visible with a trailing `…` — it is not deleted, giving the user context for what was cut off
+- In the full transcript view (Session Detail), interrupted turns are shown with an `[interrupted]` label
 - STT captures the user's correction as the next user turn
 - LLM receives full context including the interrupted partial response — allows natural acknowledgement ("Ah right, what I meant was...")
 - **Echo handling:**
@@ -141,7 +143,8 @@ IDLE (Porcupine active, low CPU)
 
 - Triggered by: "Bye Toka" (STT phrase match, see Wake Word section) or tapping the End button
 - On end: full transcript finalised → LLM generates summary (async, non-blocking) → both saved to SQLite → brief "Session saved ✓" toast → returns to Home screen
-- **Summary failure:** if summary generation fails (timeout, LLM error), an empty summary is stored and the session is still saved. The Session Detail screen shows "Summary unavailable" in the summary section. No retry in v1.
+- **Summary generation:** triggered only on explicit session end (tap End or "Bye Toka"). Not triggered on app crash, backgrounding, or force-quit — those sessions will have no summary.
+- **Summary timeout:** 30 seconds. If generation exceeds this or fails, an empty summary is stored and the session is still saved. Session Detail shows "Summary unavailable." No retry in v1.
 
 ---
 
@@ -171,7 +174,7 @@ IDLE (Porcupine active, low CPU)
 - **Toggle:** visible in both Walk Mode and Chat Mode as `📴 Local` / `🌐 Online` badge, tappable at any time
 - **Mid-turn toggle behaviour:** if the toggle is tapped while the LLM is actively generating a response, the mode switch is **queued** — the current turn completes with the current model, then the next turn uses the new mode. No response is cancelled or re-executed.
 - **Error handling:** if Groq is unreachable, rate-limited, or returns an error, the app **automatically falls back to Local mode** for that turn and speaks: "Connection issue, using local mode." The badge reverts to `📴 Local`. No crash, no silent failure.
-- **TTS confirmation:** switching modes is spoken aloud ("Switching to Enhanced" / "Back to Local") for hands-free awareness
+- **TTS confirmation:** the badge updates immediately on tap, then "Switching to Enhanced" is spoken. The audio confirmation plays **before** Groq connection is validated — if Groq subsequently fails on the next turn, a second spoken message plays: "Connection issue, using local mode" and the badge reverts. This keeps the toggle feeling instant while still communicating fallback clearly.
 - **First-time tooltip:** one-time popover on first toggle — "Online mode connects to the internet for smarter responses" — never shown again
 
 ---
@@ -191,7 +194,7 @@ IDLE (Porcupine active, low CPU)
 - **Provider:** Native OS TTS on both platforms
   - Android: `TextToSpeech` API
   - iOS: `AVSpeechSynthesizer`
-- **Streaming:** TTS speaks sentence-by-sentence as LLM tokens arrive — minimises perceived latency
+- **Streaming:** TTS speaks sentence-by-sentence as LLM tokens arrive — minimises perceived latency. Sentence boundaries are detected by punctuation: `.` `?` `!` followed by whitespace or end-of-stream. A minimum of 8 tokens must accumulate before a sentence is flushed to avoid speaking fragments (handles abbreviations like "Dr." or "U.S."). Incomplete final fragments are flushed when the LLM stream ends.
 - **Settings:** voice and speed configurable in Settings screen
 
 ---
@@ -256,7 +259,8 @@ sessions
   id, mode, started_at, ended_at, duration_secs, model_used
 
 turns
-  id, session_id, speaker (user|ai), text, timestamp
+  id, session_id, speaker (user|ai), text, timestamp,
+  status (completed|interrupted)
 
 summaries
   id, session_id, summary_text, generated_at
