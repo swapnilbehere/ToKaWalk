@@ -1,0 +1,31 @@
+# Worktrees
+.worktrees/
+
+# Brainstorm assets
+.superpowers/
+
+# React Native
+node_modules/
+.gradle/
+local.properties
+*.keystore
+!debug.keystore
+.idea/
+.expo/
+ios/Pods/
+ios/build/
+android/build/
+android/app/build/
+
+# Build artifacts
+*.ipa
+*.apk
+*.aab
+
+# Environment
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db
