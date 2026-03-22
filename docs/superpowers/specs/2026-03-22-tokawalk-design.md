@@ -108,8 +108,11 @@ IDLE (Porcupine active, low CPU)
 ### Wake Word
 
 - **Library:** Picovoice Porcupine (React Native SDK)
-- **Keyword:** "Hey Toka" (custom keyword)
+- **Keyword:** "Hey Toka" (custom keyword, trained via Picovoice Console)
+- **Licensing:** Porcupine AccessKey embedded in the app bundle. Free tier supports up to 3 keywords with no expiry under normal usage. Key is not user-configurable in v1.
 - **Behaviour:** Passive keyword spotting only during IDLE. Activates once per session. Does not require re-triggering mid-conversation.
+- **Session end phrase:** "Bye Toka" is detected via **STT phrase matching** (not a second Porcupine keyword). After each user turn is transcribed, the Conversation Engine checks if the text is a close match to "bye toka" (case-insensitive, fuzzy — e.g. "bye Toka", "goodbye Toka"). If matched, session end is triggered. This avoids the complexity of running two Porcupine keywords simultaneously.
+- **False positive risk:** mitigated by requiring the phrase to appear as the entire utterance (not embedded in a longer sentence). Users who naturally say "bye" mid-conversation without "Toka" will not trigger session end.
 - **Fallback:** Tap-to-talk button available in Chat Mode for eyes-on use
 
 ### Voice Activity Detection (VAD)
@@ -117,14 +120,18 @@ IDLE (Porcupine active, low CPU)
 - Active only during an open session (not during IDLE)
 - Detects speech start/end automatically — no per-turn wake word needed
 - Silence threshold: ~1.5s pause to end a user turn
-- **Sensitivity setting:** tunable in Settings — higher threshold outdoors (wind/traffic guard), lower indoors
+- **Sensitivity setting:** binary toggle in Settings — Indoor / Outdoor
+  - **Indoor:** standard energy threshold (~-40 dBFS)
+  - **Outdoor:** raised threshold (~-25 dBFS) to guard against wind and traffic noise
+  - Default: Indoor. User can switch at any time in Settings. Active setting shown in the Settings screen but not surfaced during a walk.
 - VAD remains active while TTS is speaking to enable barge-in
 
 ### Barge-In
 
 - User can speak over the AI mid-response at any time
-- On detection: TTS stops immediately, partial AI response is kept in context
-- STT captures the user's correction
+- On detection: TTS stops immediately; partial AI response is **flagged as `[interrupted]` in the context array** — it is stored as a turn with `status: "interrupted"` so the LLM knows what it was mid-saying
+- Partial response is **not shown as a complete bubble in Chat Mode UI** — the bubble is removed or marked visually as cut off (e.g. trailing `…`)
+- STT captures the user's correction as the next user turn
 - LLM receives full context including the interrupted partial response — allows natural acknowledgement ("Ah right, what I meant was...")
 - **Echo handling:**
   - Earbuds (primary use case): audio in ear, not captured by mic — no echo
@@ -132,12 +139,20 @@ IDLE (Porcupine active, low CPU)
 
 ### Session End
 
-- Triggered by: "Bye Toka" (wake-word-style end phrase via Porcupine) or tapping the End button
-- On end: full transcript finalised → LLM generates summary → both saved to SQLite → brief "Session saved ✓" toast → returns to Home screen
+- Triggered by: "Bye Toka" (STT phrase match, see Wake Word section) or tapping the End button
+- On end: full transcript finalised → LLM generates summary (async, non-blocking) → both saved to SQLite → brief "Session saved ✓" toast → returns to Home screen
+- **Summary failure:** if summary generation fails (timeout, LLM error), an empty summary is stored and the session is still saved. The Session Detail screen shows "Summary unavailable" in the summary section. No retry in v1.
 
 ---
 
 ## LLM
+
+### Context Window & Truncation
+
+- **Local (Llama 3.2 3B):** 4K token context window
+- **Cloud (Llama 3.1 8B via Groq):** 128K token context window
+- **Truncation strategy:** when the local context approaches 3,800 tokens, the oldest turns are pruned first (FIFO), keeping the system prompt and the most recent turns intact. The system prompt is never pruned.
+- **No hard session length limit** in v1. Long sessions naturally self-truncate via the above strategy.
 
 ### Local Mode (default)
 
@@ -151,8 +166,11 @@ IDLE (Porcupine active, low CPU)
 - **Model:** Llama 3.1 8B via Groq API
 - **Why Groq:** generous free tier (14,400 req/day, 30 req/min), LPU hardware gives near-instant response — critical for voice conversation pacing
 - **Why same Llama family:** consistent reasoning patterns and response style across Local and Enhanced — the switch feels like "same AI, more power" not a personality change
+- **API key:** Groq API key is embedded in the app bundle (v1). No user-provided key required. Key is not user-configurable in v1.
 - **Context handoff:** full conversation history is passed to Groq on switch — seamless mid-session transitions
 - **Toggle:** visible in both Walk Mode and Chat Mode as `📴 Local` / `🌐 Online` badge, tappable at any time
+- **Mid-turn toggle behaviour:** if the toggle is tapped while the LLM is actively generating a response, the mode switch is **queued** — the current turn completes with the current model, then the next turn uses the new mode. No response is cancelled or re-executed.
+- **Error handling:** if Groq is unreachable, rate-limited, or returns an error, the app **automatically falls back to Local mode** for that turn and speaks: "Connection issue, using local mode." The badge reverts to `📴 Local`. No crash, no silent failure.
 - **TTS confirmation:** switching modes is spoken aloud ("Switching to Enhanced" / "Back to Local") for hands-free awareness
 - **First-time tooltip:** one-time popover on first toggle — "Online mode connects to the internet for smarter responses" — never shown again
 
@@ -187,8 +205,9 @@ Four primary screens. Settings accessible via gear icon — not a primary screen
 - App title and tagline
 - Mode selector (4 options, "Just Walk" pre-selected with orange border)
 - "Start Walk" button
-- Recent Walks list (last 2-3 sessions inline, "View all →" link)
+- Recent Walks list (last 3 sessions inline, sorted most-recent-first, "View all →" link to full history)
 - **No fill/hue on selected mode** — border-only selection indicator
+- Sessions can be deleted individually from the full history view only. No bulk delete or "clear history" in v1.
 
 ### ② Walk Mode (Eyes-Free)
 
@@ -203,6 +222,10 @@ Four primary screens. Settings accessible via gear icon — not a primary screen
 - Session mode label + elapsed time (top left)
 - `📴 Local` / `🌐 Online` badge + Walk Mode toggle (top right)
 - Chat bubble history (user left, Toka right in orange)
+  - Speaker labels: "You" (user), "Toka" (AI)
+  - No per-bubble timestamp — timestamps appear only in full transcript view
+  - Interrupted AI responses shown with trailing `…` to indicate cut-off
+  - Long responses wrap naturally, no truncation in bubbles
 - Input bar with tap-to-talk mic button
 - VAD + barge-in still active — tap is a convenience, not required
 
@@ -259,11 +282,22 @@ summaries
 
 ---
 
+## Localisation
+
+- **UI language:** English only in v1
+- **STT/TTS language:** follows device default language (OS handles this automatically)
+- **LLM system prompts:** written in English. Responses may adapt to the language the user speaks in (model-dependent behaviour, not guaranteed in v1)
+- Multilingual UI is explicitly out of scope for v1
+
+---
+
 ## Out of Scope (v1)
 
 - Export/share transcripts
 - Custom wake word by user
-- Multilingual support
+- Multilingual UI
 - Background session (screen fully off mid-session)
 - iPad / tablet layout optimisation
 - Accessibility (screen reader support) — to be revisited post-v1
+- Bulk history deletion / clear all
+- User-provided Groq API key
