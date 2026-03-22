@@ -19,5 +19,8 @@ module.exports = {
     '@react-native-voice/voice': '<rootDir>/__mocks__/voice.ts',
     'react-native-tts': '<rootDir>/__mocks__/tts.ts',
     'react-native-sqlite-storage': '<rootDir>/__mocks__/sqlite.ts',
+    'react-native-gesture-handler': '<rootDir>/__mocks__/gestureHandler.ts',
+    '@react-navigation/native': '<rootDir>/__mocks__/reactNavigation.ts',
+    '@react-navigation/stack': '<rootDir>/__mocks__/reactNavigation.ts',
   },
 };
