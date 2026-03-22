@@ -1,6 +1,80 @@
-import React from 'react';
-import { View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { MicOrb } from '../components/MicOrb';
+import { LLMModeBadge } from '../components/LLMModeBadge';
+import { useConversationEngine } from '../hooks/useConversationEngine';
+import { MODE_LABELS } from '../constants/modes';
+import { colors } from '../constants/colors';
+import { RootStackParamList } from '../navigation/AppNavigator';
+
+type WalkModeRouteProp = RouteProp<RootStackParamList, 'WalkMode'>;
+
+const STATE_LABELS: Record<string, string> = {
+  listening: 'Listening...',
+  thinking: 'Thinking...',
+  speaking: 'Toka is speaking...',
+  idle: 'just talk — "Bye Toka" to end',
+};
 
 export function WalkModeScreen() {
-  return <View />;
+  const route = useRoute<WalkModeRouteProp>();
+  const navigation = useNavigation<any>();
+  const { mode } = route.params;
+  const { state, llmMode, startSession, endSession, toggleLLMMode } = useConversationEngine();
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    startSession(mode);
+    const timer = setInterval(() => setElapsed(e => e + 1), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const elapsedStr = `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}`;
+
+  const handleEnd = async () => {
+    await endSession();
+    navigation.navigate('Home');
+  };
+
+  return (
+    <View style={styles.screen}>
+      <View style={styles.header}>
+        <Text style={styles.modeLabel}>{MODE_LABELS[mode]} · {elapsedStr}</Text>
+        <LLMModeBadge mode={llmMode} onToggle={toggleLLMMode} />
+      </View>
+
+      <View style={styles.center}>
+        <MicOrb state={state} />
+        <Text style={styles.status}>{STATE_LABELS[state] ?? ''}</Text>
+      </View>
+
+      <View style={styles.controls}>
+        <TouchableOpacity style={styles.btn} onPress={() => navigation.navigate('ChatMode', { mode })}>
+          <Text style={styles.btnIcon}>💬</Text>
+          <Text style={styles.btnLabel}>Chat Mode</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.btn} onPress={() => navigation.navigate('Settings')}>
+          <Text style={styles.btnIcon}>⚙️</Text>
+          <Text style={styles.btnLabel}>Settings</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.btn} onPress={handleEnd}>
+          <Text style={styles.btnIcon}>■</Text>
+          <Text style={styles.btnLabel}>End</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
 }
+
+const styles = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: colors.bg, padding: 20 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  modeLabel: { color: colors.textFaint, fontSize: 11 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  status: { color: colors.green, fontSize: 13, marginTop: 16 },
+  controls: { flexDirection: 'row', justifyContent: 'center', gap: 28, paddingBottom: 20 },
+  btn: { alignItems: 'center' },
+  btnIcon: { fontSize: 22, color: colors.textMuted, backgroundColor: colors.surface, padding: 8, borderRadius: 20, overflow: 'hidden', borderWidth: 1, borderColor: colors.border },
+  btnLabel: { color: colors.textFaint, fontSize: 10, marginTop: 4 },
+});
