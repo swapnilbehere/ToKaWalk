@@ -1,6 +1,6 @@
 module.exports = {
   preset: 'react-native',
-  setupFilesAfterFramework: ['@testing-library/jest-native/extend-expect'],
+  setupFilesAfterEnv: ['@testing-library/jest-native/extend-expect'],
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx'],
   transform: {
     '^.+\\.(ts|tsx)$': [
@@ -12,7 +12,7 @@ module.exports = {
       },
     ],
   },
-  testPathPattern: '__tests__',
+  testMatch: ['**/__tests__/**/*.(ts|tsx|js)'],
   moduleNameMapper: {
     '@picovoice/porcupine-react-native': '<rootDir>/__mocks__/porcupine.ts',
     'llama.rn': '<rootDir>/__mocks__/llamarn.ts',
