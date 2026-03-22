@@ -169,7 +169,7 @@ IDLE (Porcupine active, low CPU)
 - **Model:** Llama 3.1 8B via Groq API
 - **Why Groq:** generous free tier (14,400 req/day, 30 req/min), LPU hardware gives near-instant response — critical for voice conversation pacing
 - **Why same Llama family:** consistent reasoning patterns and response style across Local and Enhanced — the switch feels like "same AI, more power" not a personality change
-- **API key:** Groq API key is embedded in the app bundle (v1). No user-provided key required. Key is not user-configurable in v1.
+- **API key:** User provides their own Groq API key, entered once in Settings. Stored locally in SQLite preferences. If no key is set, the Online toggle is disabled with a prompt: "Add your Groq API key in Settings to enable Online mode."
 - **Context handoff:** full conversation history is passed to Groq on switch — seamless mid-session transitions
 - **Toggle:** visible in both Walk Mode and Chat Mode as `📴 Local` / `🌐 Online` badge, tappable at any time
 - **Mid-turn toggle behaviour:** if the toggle is tapped while the LLM is actively generating a response, the mode switch is **queued** — the current turn completes with the current model, then the next turn uses the new mode. No response is cancelled or re-executed.
@@ -245,6 +245,7 @@ Four primary screens. Settings accessible via gear icon — not a primary screen
 - Default mode: which mode pre-selects on Home
 - TTS voice and speed
 - Online/Offline default preference
+- **Groq API key:** text input, stored locally, masked after entry
 - Model info: local model name, Groq model name
 
 ---
@@ -304,4 +305,4 @@ summaries
 - iPad / tablet layout optimisation
 - Accessibility (screen reader support) — to be revisited post-v1
 - Bulk history deletion / clear all
-- User-provided Groq API key
+- Multi-user or shared Groq API key management
