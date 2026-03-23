@@ -24,8 +24,14 @@ export function useConversationEngine() {
       const prefs = await new PreferencesRepository(db).get();
 
       const localLLM = new LocalLLMService();
-      // Model file must be bundled or downloaded; path varies by platform
-      await localLLM.load('llama-3.2-3b.gguf');
+      // Model downloaded to device documents directory on first launch.
+      // On iOS: <Documents>/llama-3.2-3b.gguf
+      // On Android: <InternalStorage>/llama-3.2-3b.gguf
+      // Download URL: https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF (Q4_K_M recommended)
+      const { Platform } = require('react-native');
+      const RNFS = require('react-native-fs');
+      const modelPath = `${Platform.OS === 'ios' ? RNFS.DocumentDirectoryPath : RNFS.ExternalDirectoryPath}/llama-3.2-3b.gguf`;
+      await localLLM.load(modelPath);
 
       const groqLLM = new GroqLLMService(prefs.groqApiKey);
       const tts = new TTSService();

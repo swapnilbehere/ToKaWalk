@@ -1,11 +1,20 @@
 package com.tokawalk
 
+import android.media.AudioManager
+import android.os.Bundle
 import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate
 import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint.fabricEnabled
 import com.facebook.react.defaults.DefaultReactActivityDelegate
 
 class MainActivity : ReactActivity() {
+
+  override fun onCreate(savedInstanceState: Bundle?) {
+    super.onCreate(savedInstanceState)
+    // Configure audio mode for AEC (echo cancellation during TTS + STT overlap)
+    val audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
+    audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+  }
 
   /**
    * Returns the name of the main component registered from JavaScript. This is used to schedule
