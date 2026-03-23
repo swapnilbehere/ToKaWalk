@@ -14,7 +14,8 @@ module.exports = {
   },
   testMatch: ['**/__tests__/**/*.(ts|tsx|js)'],
   moduleNameMapper: {
-    '@picovoice/porcupine-react-native': '<rootDir>/__mocks__/porcupine.ts',
+    'react-native-vosk': '<rootDir>/__mocks__/vosk.ts',
+    'react-native-fs': '<rootDir>/__mocks__/rnfs.ts',
     'llama.rn': '<rootDir>/__mocks__/llamarn.ts',
     '@react-native-voice/voice': '<rootDir>/__mocks__/voice.ts',
     'react-native-tts': '<rootDir>/__mocks__/tts.ts',

@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { Platform } from 'react-native';
+import { DocumentDirectoryPath, ExternalDirectoryPath } from 'react-native-fs';
 import { ConversationState, SessionMode, LLMMode } from '../types';
 import { ConversationEngine } from '../engine/ConversationEngine';
 import { WakeWordService } from '../services/wakeword/WakeWordService';
@@ -24,21 +26,20 @@ export function useConversationEngine() {
       const prefs = await new PreferencesRepository(db).get();
 
       const localLLM = new LocalLLMService();
-      // Model downloaded to device documents directory on first launch.
-      // On iOS: <Documents>/llama-3.2-3b.gguf
-      // On Android: <InternalStorage>/llama-3.2-3b.gguf
-      // Download URL: https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF (Q4_K_M recommended)
-      const { Platform } = require('react-native');
-      const RNFS = require('react-native-fs');
-      const modelPath = `${Platform.OS === 'ios' ? RNFS.DocumentDirectoryPath : RNFS.ExternalDirectoryPath}/llama-3.2-3b.gguf`;
-      await localLLM.load(modelPath);
+      // Models live in the device's documents directory (downloaded on first launch).
+      // LLM:      https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF (Q4_K_M, ~2GB)
+      // Vosk:     https://alphacephei.com/vosk/models → vosk-model-small-en-us-0.15 (~40MB)
+      const docsDir = Platform.OS === 'ios' ? DocumentDirectoryPath : ExternalDirectoryPath;
+      const llmModelPath = `${docsDir}/llama-3.2-3b.gguf`;
+      const wakeModelPath = `${docsDir}/vosk-model-small-en-us-0.15`;
+      await localLLM.load(llmModelPath);
 
       const groqLLM = new GroqLLMService(prefs.groqApiKey);
       const tts = new TTSService();
       await tts.init(prefs.ttsRate);
 
       const engine = new ConversationEngine({
-        wakeWord: new WakeWordService(),
+        wakeWord: new WakeWordService(wakeModelPath),
         stt: new STTService(),
         tts,
         llm: prefs.llmMode === 'online' && groqLLM.isReady() ? groqLLM : localLLM,
