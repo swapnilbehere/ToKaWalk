@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Platform } from 'react-native';
-import { DocumentDirectoryPath, ExternalDirectoryPath } from 'react-native-fs';
 import { ConversationState, SessionMode, LLMMode } from '../types';
+import { VOSK_MODEL_DIR, LLM_MODEL_PATH } from '../services/ModelManager';
 import { ConversationEngine } from '../engine/ConversationEngine';
 import { WakeWordService } from '../services/wakeword/WakeWordService';
 import { STTService } from '../services/stt/STTService';
@@ -26,20 +25,16 @@ export function useConversationEngine() {
       const prefs = await new PreferencesRepository(db).get();
 
       const localLLM = new LocalLLMService();
-      // Models live in the device's documents directory (downloaded on first launch).
-      // LLM:      https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF (Q4_K_M, ~2GB)
-      // Vosk:     https://alphacephei.com/vosk/models → vosk-model-small-en-us-0.15 (~40MB)
-      const docsDir = Platform.OS === 'ios' ? DocumentDirectoryPath : ExternalDirectoryPath;
-      const llmModelPath = `${docsDir}/llama-3.2-3b.gguf`;
-      const wakeModelPath = `${docsDir}/vosk-model-small-en-us-0.15`;
-      await localLLM.load(llmModelPath);
+      // Paths are resolved by ModelManager; models are guaranteed present
+      // by the time App.tsx passes through SetupScreen.
+      await localLLM.load(LLM_MODEL_PATH);
 
       const groqLLM = new GroqLLMService(prefs.groqApiKey);
       const tts = new TTSService();
       await tts.init(prefs.ttsRate);
 
       const engine = new ConversationEngine({
-        wakeWord: new WakeWordService(wakeModelPath),
+        wakeWord: new WakeWordService(VOSK_MODEL_DIR),
         stt: new STTService(),
         tts,
         llm: prefs.llmMode === 'online' && groqLLM.isReady() ? groqLLM : localLLM,
