@@ -5,9 +5,15 @@ import {
   downloadLLM,
   DownloadProgress,
 } from '../services/ModelManager';
+import {
+  requestAllPermissions,
+  allGranted,
+} from '../services/PermissionService';
 
 export type SetupStatus =
   | 'checking'
+  | 'requesting-permissions'
+  | 'permissions-denied'
   | 'downloading-vosk'
   | 'downloading-llm'
   | 'ready'
@@ -32,6 +38,15 @@ export function useModelSetup() {
     setState(s => ({ ...s, status: 'checking', errorMessage: null }));
 
     try {
+      // Step 1: permissions
+      setState(s => ({ ...s, status: 'requesting-permissions' }));
+      const perms = await requestAllPermissions();
+      if (!allGranted(perms)) {
+        setState(s => ({ ...s, status: 'permissions-denied' }));
+        return;
+      }
+
+      // Step 2: models
       const { vosk, llm } = await checkModelsReady();
 
       if (!vosk) {

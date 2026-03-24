@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, Linking, StyleSheet } from 'react-native';
 import { SetupStatus } from '../hooks/useModelSetup';
 import { colors } from '../constants/colors';
 
@@ -12,7 +12,8 @@ interface Props {
 }
 
 const STATUS_LABEL: Partial<Record<SetupStatus, string>> = {
-  checking: 'Checking models...',
+  checking: 'Checking...',
+  'requesting-permissions': 'Requesting permissions...',
   'downloading-vosk': 'Downloading wake word model',
   'downloading-llm': 'Downloading language model',
 };
@@ -33,40 +34,56 @@ function ProgressBar({ label, progress, size }: { label: string; progress: numbe
 }
 
 export function SetupScreen({ status, voskProgress, llmProgress, errorMessage, onRetry }: Props) {
-  return (
-    <View style={styles.screen}>
-      <Text style={styles.title}>ToKaWalk</Text>
-      <Text style={styles.tagline}>your walking companion</Text>
+  if (status === 'permissions-denied') {
+    return (
+      <View style={styles.screen}>
+        <Text style={styles.title}>ToKaWalk</Text>
+        <Text style={styles.tagline}>your walking companion</Text>
+        <View style={styles.errorBox}>
+          <Text style={styles.errorText}>
+            Microphone access is required for ToKaWalk to work.{'\n\n'}
+            Please allow microphone permission in your device settings, then reopen the app.
+          </Text>
+          <TouchableOpacity style={styles.retryBtn} onPress={() => Linking.openSettings()}>
+            <Text style={styles.retryText}>Open Settings</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
 
-      {status === 'error' ? (
+  if (status === 'error') {
+    return (
+      <View style={styles.screen}>
+        <Text style={styles.title}>ToKaWalk</Text>
+        <Text style={styles.tagline}>your walking companion</Text>
         <View style={styles.errorBox}>
           <Text style={styles.errorText}>{errorMessage}</Text>
           <TouchableOpacity style={styles.retryBtn} onPress={onRetry}>
             <Text style={styles.retryText}>Try again</Text>
           </TouchableOpacity>
         </View>
-      ) : (
-        <View style={styles.content}>
-          <Text style={styles.heading}>First launch setup</Text>
-          <Text style={styles.subheading}>
-            Downloading models for offline use. This happens once.
-          </Text>
+      </View>
+    );
+  }
 
-          <ProgressBar
-            label="Wake word model"
-            progress={voskProgress}
-            size="~40 MB"
-          />
-          <ProgressBar
-            label="Language model"
-            progress={llmProgress}
-            size="~2 GB"
-          />
+  return (
+    <View style={styles.screen}>
+      <Text style={styles.title}>ToKaWalk</Text>
+      <Text style={styles.tagline}>your walking companion</Text>
 
-          <Text style={styles.status}>{STATUS_LABEL[status] ?? ''}</Text>
-          <Text style={styles.hint}>Keep the app open. Wi-Fi recommended for the language model.</Text>
-        </View>
-      )}
+      <View style={styles.content}>
+        <Text style={styles.heading}>First launch setup</Text>
+        <Text style={styles.subheading}>
+          Downloading models for offline use. This happens once.
+        </Text>
+
+        <ProgressBar label="Wake word model" progress={voskProgress} size="~40 MB" />
+        <ProgressBar label="Language model"  progress={llmProgress}  size="~2 GB"  />
+
+        <Text style={styles.status}>{STATUS_LABEL[status] ?? ''}</Text>
+        <Text style={styles.hint}>Keep the app open. Wi-Fi recommended for the language model.</Text>
+      </View>
     </View>
   );
 }
