@@ -27,8 +27,10 @@ export class GroqLLMService implements LLMService {
       throw new Error(`Groq error: ${response.status}`);
     }
 
-    const reader = response.body!.getReader();
-    const decoder = new TextDecoder();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const r = response as any;
+    const reader = r.body.getReader();
+    const decoder = new (globalThis as any).TextDecoder();
     let buffer = '';
 
     while (true) {

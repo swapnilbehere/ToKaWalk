@@ -1,12 +1,12 @@
-import { LlamaContext } from 'llama.rn';
+import { initLlama, LlamaContext, TokenData, RNLlamaOAICompatibleMessage } from 'llama.rn';
 import { LLMService } from './LLMService';
 import { LLMMessage } from '../../types';
 
 export class LocalLLMService implements LLMService {
-  private context: any = null;
+  private context: LlamaContext | null = null;
 
   async load(modelPath: string): Promise<void> {
-    this.context = await LlamaContext.create({ model: modelPath, n_ctx: 4096 });
+    this.context = await initLlama({ model: modelPath, n_ctx: 4096 });
   }
 
   isReady(): boolean {
@@ -20,10 +20,15 @@ export class LocalLLMService implements LLMService {
     let finished = false;
     let resolve: (() => void) | null = null;
 
+    const rnMessages: RNLlamaOAICompatibleMessage[] = messages.map(m => ({
+      role: m.role,
+      content: m.content,
+    }));
+
     this.context.completion(
-      { messages },
-      (token: string) => {
-        tokens.push(token);
+      { messages: rnMessages },
+      (data: TokenData) => {
+        tokens.push(data.token);
         resolve?.();
       },
     ).then(() => {

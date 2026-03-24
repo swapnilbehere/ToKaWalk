@@ -13,13 +13,15 @@ import Vosk from 'react-native-vosk';
 const HEY_TOKA_GRAMMAR = ['hey toka', '[unk]'];
 
 export class WakeWordService {
-  private resultListener: any = null;
-  private finalResultListener: any = null;
+  private vosk: Vosk | null = null;
+  private resultListener: { remove: () => void } | null = null;
+  private finalResultListener: { remove: () => void } | null = null;
 
   constructor(private modelPath: string) {}
 
   async start(onDetected: () => void): Promise<void> {
-    await Vosk.loadModel(this.modelPath);
+    this.vosk = new Vosk();
+    await this.vosk.loadModel(this.modelPath);
 
     const handleResult = (result: string) => {
       try {
@@ -30,16 +32,17 @@ export class WakeWordService {
       } catch { /* ignore malformed JSON */ }
     };
 
-    this.resultListener = Vosk.onResult(handleResult);
-    this.finalResultListener = Vosk.onFinalResult(handleResult);
+    this.resultListener = this.vosk.onResult(handleResult);
+    this.finalResultListener = this.vosk.onFinalResult(handleResult);
 
-    await Vosk.start({ grammar: HEY_TOKA_GRAMMAR });
+    await this.vosk.start({ grammar: HEY_TOKA_GRAMMAR });
   }
 
   async stop(): Promise<void> {
-    await Vosk.stop();
+    this.vosk?.stop();
     this.resultListener?.remove();
     this.finalResultListener?.remove();
+    this.vosk = null;
     this.resultListener = null;
     this.finalResultListener = null;
   }
