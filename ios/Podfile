@@ -1,3 +1,7 @@
+# Disable New Architecture: react-native-sqlite-storage and react-native-vosk
+# use the legacy bridge (NativeModules) and are not TurboModule-compatible.
+ENV['RCT_NEW_ARCH_ENABLED'] = '0'
+
 # Resolve react_native_pods.rb with node to allow for hoisting
 require Pod::Executable.execute_command('node', ['-p',
   'require.resolve(
@@ -30,5 +34,20 @@ target 'ToKaWalk' do
       :mac_catalyst_enabled => false,
       # :ccache_enabled => true
     )
+
+    # Fix RNZipArchive per-file COMPILER_FLAGS for Xcode 26 / Clang compatibility.
+    # The podspec sets s.compiler_flags = '-GCC_PREPROCESSOR_DEFINITIONS="..."'
+    # which becomes a per-file flag that newer Clang rejects (-G is unsupported).
+    # Convert to proper -D defines instead.
+    installer.pods_project.targets.each do |target|
+      next unless target.name == 'RNZipArchive'
+      target.source_build_phase.files.each do |build_file|
+        next unless build_file.settings && build_file.settings['COMPILER_FLAGS']
+        flags = build_file.settings['COMPILER_FLAGS'].to_s
+        next unless flags.include?('GCC_PREPROCESSOR_DEFINITIONS')
+        defines = %w[HAVE_INTTYPES_H HAVE_PKCRYPT HAVE_STDINT_H HAVE_WZAES HAVE_ZLIB MZ_ZIP_NO_SIGNING]
+        build_file.settings['COMPILER_FLAGS'] = defines.map { |d| "-D#{d}" }.join(' ')
+      end
+    end
   end
 end

@@ -16,11 +16,13 @@ export function HomeScreen() {
 
   useEffect(() => {
     (async () => {
-      const db = await getDatabase();
-      const prefs = await new PreferencesRepository(db).get();
-      setSelectedMode(prefs.defaultMode);
-      const sessions = await new SessionRepository(db).list(3);
-      setRecentSessions(sessions);
+      try {
+        const db = getDatabase();
+        const prefs = await new PreferencesRepository(db).get();
+        setSelectedMode(prefs.defaultMode);
+        const sessions = await new SessionRepository(db).list(3);
+        setRecentSessions(sessions);
+      } catch { /* DB not yet initialized or empty */ }
     })();
   }, []);
 

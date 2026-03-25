@@ -12,7 +12,7 @@ export function HistoryScreen() {
   const [sessions, setSessions] = useState<Session[]>([]);
 
   const load = useCallback(async () => {
-    const db = await getDatabase();
+    const db = getDatabase();
     setSessions(await new SessionRepository(db).list(200));
   }, []);
 
@@ -24,7 +24,7 @@ export function HistoryScreen() {
       {
         text: 'Delete', style: 'destructive',
         onPress: async () => {
-          const db = await getDatabase();
+          const db = getDatabase();
           await new SessionRepository(db).delete(session.id);
           load();
         },

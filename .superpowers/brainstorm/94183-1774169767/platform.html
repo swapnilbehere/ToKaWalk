@@ -1,0 +1,40 @@
+<h2>First question: Which platform approach?</h2>
+<p class="subtitle">This affects the entire tech stack — pick the approach that fits your situation best.</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>React Native</h3>
+      <p>One JavaScript/TypeScript codebase for both Android &amp; iOS. Large ecosystem, good offline LLM support via native modules. Fastest to ship for a solo dev or small team.</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>Pros</h4><ul><li>Single codebase</li><li>Large community</li><li>Good LLM bindings available</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>Bridge overhead</li><li>Some native quirks</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Flutter</h3>
+      <p>Dart codebase, compiles to native. Fast rendering, growing LLM plugin ecosystem. Great UI consistency across platforms.</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>Pros</h4><ul><li>Native performance</li><li>Consistent UI</li><li>Growing ecosystem</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>Dart learning curve</li><li>LLM plugins still maturing</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Native (Android first, iOS later)</h3>
+      <p>Start with Android (Kotlin), ship iOS (Swift) later. Best performance, full control over on-device LLM integration.</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>Pros</h4><ul><li>Best performance &amp; control</li><li>Direct hardware access</li><li>Best LLM integration</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>Two codebases eventually</li><li>Slower to ship cross-platform</li></ul></div>
+      </div>
+    </div>
+  </div>
+</div>

@@ -14,7 +14,7 @@ export function SettingsScreen() {
 
   useEffect(() => {
     (async () => {
-      const db = await getDatabase();
+      const db = getDatabase();
       const r = new PreferencesRepository(db);
       setRepo(r);
       setPrefs(await r.get());

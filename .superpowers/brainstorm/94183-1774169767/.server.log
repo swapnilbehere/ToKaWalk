@@ -1,0 +1,14 @@
+{"type":"server-started","port":58131,"host":"127.0.0.1","url_host":"localhost","url":"http://localhost:58131","screen_dir":"/Users/swapnilsushilbehere/Documents/Github/ToKaWalk/.superpowers/brainstorm/94183-1774169767"}
+{"type":"screen-added","file":"/Users/swapnilsushilbehere/Documents/Github/ToKaWalk/.superpowers/brainstorm/94183-1774169767/platform.html"}
+{"source":"user-event","type":"click","text":"A\n    \n      React Native\n      One JavaScript/TypeScript codebase for both Android & iOS. Large ecosystem, good offline LLM support via native modules. Fastest to ship for a solo dev or small team.\n      \n        ProsSingle codebaseLarge communityGood LLM bindings available\n        ConsBridge overheadSome native quirks","choice":"a","id":null,"timestamp":1774169880884}
+{"source":"user-event","type":"click","text":"A\n    \n      React Native\n      One JavaScript/TypeScript codebase for both Android & iOS. Large ecosystem, good offline LLM support via native modules. Fastest to ship for a solo dev or small team.\n      \n        ProsSingle codebaseLarge communityGood LLM bindings available\n        ConsBridge overheadSome native quirks","choice":"a","id":null,"timestamp":1774169887981}
+{"type":"screen-added","file":"/Users/swapnilsushilbehere/Documents/Github/ToKaWalk/.superpowers/brainstorm/94183-1774169767/waiting-1.html"}
+{"type":"screen-added","file":"/Users/swapnilsushilbehere/Documents/Github/ToKaWalk/.superpowers/brainstorm/94183-1774169767/ui-philosophy.html"}
+{"type":"screen-added","file":"/Users/swapnilsushilbehere/Documents/Github/ToKaWalk/.superpowers/brainstorm/94183-1774169767/waiting-2.html"}
+{"type":"screen-added","file":"/Users/swapnilsushilbehere/Documents/Github/ToKaWalk/.superpowers/brainstorm/94183-1774169767/architecture.html"}
+{"type":"screen-added","file":"/Users/swapnilsushilbehere/Documents/Github/ToKaWalk/.superpowers/brainstorm/94183-1774169767/data-flow.html"}
+{"type":"screen-added","file":"/Users/swapnilsushilbehere/Documents/Github/ToKaWalk/.superpowers/brainstorm/94183-1774169767/data-flow-v2.html"}
+{"type":"screen-added","file":"/Users/swapnilsushilbehere/Documents/Github/ToKaWalk/.superpowers/brainstorm/94183-1774169767/screens.html"}
+{"type":"screen-added","file":"/Users/swapnilsushilbehere/Documents/Github/ToKaWalk/.superpowers/brainstorm/94183-1774169767/screens-v2.html"}
+{"type":"screen-added","file":"/Users/swapnilsushilbehere/Documents/Github/ToKaWalk/.superpowers/brainstorm/94183-1774169767/screens-v3.html"}
+{"type":"server-stopped","reason":"idle timeout"}

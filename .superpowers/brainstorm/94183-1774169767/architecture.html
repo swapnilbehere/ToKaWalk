@@ -1,0 +1,63 @@
+<h2>ToKaWalk — Layered Architecture</h2>
+<p class="subtitle">Approach B: each layer has one job, clean boundaries throughout</p>
+
+<div style="font-family:monospace;font-size:13px;line-height:1.6;">
+
+  <div style="background:#1e293b;border-radius:12px;padding:16px;margin-bottom:12px;border-left:4px solid #818cf8;">
+    <div class="label" style="color:#818cf8;">UI LAYER</div>
+    <div style="display:flex;gap:12px;margin-top:8px;">
+      <div style="flex:1;background:#0f172a;border-radius:8px;padding:10px;text-align:center;">
+        <div style="font-size:20px;">🚶</div>
+        <div style="color:#e2e8f0;font-size:11px;margin-top:4px;">Walk Mode<br/><span style="color:#64748b;">Eyes-free, mic indicator</span></div>
+      </div>
+      <div style="flex:1;background:#0f172a;border-radius:8px;padding:10px;text-align:center;">
+        <div style="font-size:20px;">💬</div>
+        <div style="color:#e2e8f0;font-size:11px;margin-top:4px;">Chat Mode<br/><span style="color:#64748b;">Bubbles + mic button</span></div>
+      </div>
+      <div style="flex:1;background:#0f172a;border-radius:8px;padding:10px;text-align:center;">
+        <div style="font-size:20px;">📋</div>
+        <div style="color:#e2e8f0;font-size:11px;margin-top:4px;">Sessions<br/><span style="color:#64748b;">History & summaries</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div style="text-align:center;color:#475569;margin-bottom:8px;">↕ speaks to ↕</div>
+
+  <div style="background:#1e293b;border-radius:12px;padding:16px;margin-bottom:12px;border-left:4px solid #34d399;">
+    <div class="label" style="color:#34d399;">CONVERSATION ENGINE</div>
+    <div style="color:#94a3b8;font-size:12px;margin-top:6px;">
+      Session state · Mode (Brain Dump / Journal / Learn) · Turn management · Context window · History writer
+    </div>
+  </div>
+
+  <div style="text-align:center;color:#475569;margin-bottom:8px;">↕ delegates to ↕</div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:12px;">
+    <div style="background:#1e293b;border-radius:10px;padding:12px;border-left:4px solid #f472b6;">
+      <div class="label" style="color:#f472b6;">WAKE WORD</div>
+      <div style="color:#94a3b8;font-size:11px;margin-top:4px;">Porcupine<br/>"Hey Toka"<br/>Always on-device</div>
+    </div>
+    <div style="background:#1e293b;border-radius:10px;padding:12px;border-left:4px solid #fb923c;">
+      <div class="label" style="color:#fb923c;">STT</div>
+      <div style="color:#94a3b8;font-size:11px;margin-top:4px;">Native OS STT<br/>iOS / Android<br/>On-device</div>
+    </div>
+    <div style="background:#1e293b;border-radius:10px;padding:12px;border-left:4px solid #38bdf8;">
+      <div class="label" style="color:#38bdf8;">LLM</div>
+      <div style="color:#94a3b8;font-size:11px;margin-top:4px;">Local: Llama 3.2 3B<br/>via llama.rn<br/>Cloud: Groq 8B</div>
+    </div>
+    <div style="background:#1e293b;border-radius:10px;padding:12px;border-left:4px solid #a78bfa;">
+      <div class="label" style="color:#a78bfa;">TTS</div>
+      <div style="color:#94a3b8;font-size:11px;margin-top:4px;">Native OS TTS<br/>iOS / Android<br/>On-device</div>
+    </div>
+  </div>
+
+  <div style="text-align:center;color:#475569;margin-bottom:8px;">↕ persists to ↕</div>
+
+  <div style="background:#1e293b;border-radius:12px;padding:16px;border-left:4px solid #fbbf24;">
+    <div class="label" style="color:#fbbf24;">LOCAL STORAGE</div>
+    <div style="color:#94a3b8;font-size:12px;margin-top:6px;">
+      SQLite · Session transcripts · AI-generated summaries · User preferences · No cloud, fully private
+    </div>
+  </div>
+
+</div>

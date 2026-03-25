@@ -16,7 +16,7 @@ export function LLMModeBadge({ mode, onToggle, disabled }: Props) {
 
   const handleToggle = async () => {
     if (mode === 'local') {
-      const db = await getDatabase();
+      const db = getDatabase();
       const repo = new PreferencesRepository(db);
       const prefs = await repo.get();
       if (!prefs.hasSeenOnlineTooltip) {

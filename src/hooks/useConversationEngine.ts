@@ -21,7 +21,7 @@ export function useConversationEngine() {
 
   useEffect(() => {
     (async () => {
-      const db = await getDatabase();
+      const db = getDatabase();
       const prefs = await new PreferencesRepository(db).get();
 
       const localLLM = new LocalLLMService();

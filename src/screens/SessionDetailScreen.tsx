@@ -22,7 +22,7 @@ export function SessionDetailScreen() {
 
   useEffect(() => {
     (async () => {
-      const db = await getDatabase();
+      const db = getDatabase();
       const sessions = await new SessionRepository(db).list(100);
       setSession(sessions.find(s => s.id === sessionId) ?? null);
       setTurns(await new TurnRepository(db).getForSession(sessionId));

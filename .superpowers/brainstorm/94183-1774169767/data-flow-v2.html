@@ -1,0 +1,106 @@
+<h2>ToKaWalk — Conversation Loop v2</h2>
+<p class="subtitle">Wake once, talk freely, barge-in anytime</p>
+
+<div style="font-family:monospace;font-size:12px;">
+
+  <div style="display:flex;flex-direction:column;gap:6px;">
+
+    <div style="display:flex;align-items:center;gap:12px;">
+      <div style="width:32px;height:32px;border-radius:50%;background:#1e293b;border:2px solid #64748b;display:flex;align-items:center;justify-content:center;font-weight:bold;color:#64748b;flex-shrink:0;">⏸</div>
+      <div style="background:#1e293b;border-radius:8px;padding:10px;flex:1;">
+        <span style="color:#64748b;font-weight:bold;">IDLE</span>
+        <span style="color:#94a3b8;"> — Porcupine passively listens for "Hey Toka" only. Minimal CPU, battery friendly. App can be screen-off.</span>
+      </div>
+    </div>
+
+    <div style="margin-left:15px;color:#475569;">↓ "Hey Toka" detected</div>
+
+    <div style="display:flex;align-items:center;gap:12px;">
+      <div style="width:32px;height:32px;border-radius:50%;background:#1e293b;border:2px solid #34d399;display:flex;align-items:center;justify-content:center;font-weight:bold;color:#34d399;flex-shrink:0;">▶</div>
+      <div style="background:#1e293b;border-radius:8px;padding:10px;flex:1;">
+        <span style="color:#34d399;font-weight:bold;">SESSION START</span>
+        <span style="color:#94a3b8;"> — User picks mode (Brain Dump / Journal / Learn) or uses last-used mode. VAD activates. No more wake word needed.</span>
+      </div>
+    </div>
+
+    <div style="margin-left:15px;color:#475569;">↓ enters conversation mode</div>
+
+    <div style="background:#0f172a;border:1px solid #334155;border-radius:12px;padding:14px;margin-bottom:6px;">
+      <div class="label" style="color:#34d399;margin-bottom:10px;">CONVERSATION MODE LOOP</div>
+
+      <div style="display:flex;flex-direction:column;gap:6px;">
+
+        <div style="display:flex;align-items:center;gap:12px;">
+          <div style="width:28px;height:28px;border-radius:50%;background:#1e293b;border:2px solid #fb923c;display:flex;align-items:center;justify-content:center;font-weight:bold;color:#fb923c;flex-shrink:0;font-size:11px;">VAD</div>
+          <div style="background:#1e293b;border-radius:8px;padding:8px;flex:1;">
+            <span style="color:#fb923c;font-weight:bold;">LISTENING</span>
+            <span style="color:#94a3b8;"> — VAD detects user starts speaking. Threshold tuned slightly higher outdoors (wind/traffic guard).</span>
+          </div>
+        </div>
+
+        <div style="margin-left:13px;color:#475569;">↓ speech detected</div>
+
+        <div style="display:flex;align-items:center;gap:12px;">
+          <div style="width:28px;height:28px;border-radius:50%;background:#1e293b;border:2px solid #fb923c;display:flex;align-items:center;justify-content:center;font-weight:bold;color:#fb923c;flex-shrink:0;font-size:11px;">STT</div>
+          <div style="background:#1e293b;border-radius:8px;padding:8px;flex:1;">
+            <span style="color:#fb923c;font-weight:bold;">TRANSCRIBE</span>
+            <span style="color:#94a3b8;"> — Native OS STT captures until ~1.5s silence. Sends text to Engine.</span>
+          </div>
+        </div>
+
+        <div style="margin-left:13px;color:#475569;">↓</div>
+
+        <div style="display:flex;align-items:center;gap:12px;">
+          <div style="width:28px;height:28px;border-radius:50%;background:#1e293b;border:2px solid #38bdf8;display:flex;align-items:center;justify-content:center;font-weight:bold;color:#38bdf8;flex-shrink:0;font-size:11px;">LLM</div>
+          <div style="background:#1e293b;border-radius:8px;padding:8px;flex:1;">
+            <span style="color:#38bdf8;font-weight:bold;">GENERATE</span>
+            <span style="color:#94a3b8;"> — Local Llama 3.2 3B or Groq 8B. Streams tokens. Engine sends to TTS sentence-by-sentence.</span>
+          </div>
+        </div>
+
+        <div style="margin-left:13px;color:#475569;">↓ streams sentences</div>
+
+        <div style="display:flex;align-items:center;gap:12px;">
+          <div style="width:28px;height:28px;border-radius:50%;background:#1e293b;border:2px solid #a78bfa;display:flex;align-items:center;justify-content:center;font-weight:bold;color:#a78bfa;flex-shrink:0;font-size:11px;">TTS</div>
+          <div style="background:#1e293b;border-radius:8px;padding:8px;flex:1;">
+            <span style="color:#a78bfa;font-weight:bold;">SPEAK</span>
+            <span style="color:#94a3b8;"> — Native OS TTS speaks. AEC active (OS-level). VAD still listening in background for barge-in.</span>
+          </div>
+        </div>
+
+        <div style="margin-left:13px;display:flex;gap:20px;margin-top:4px;">
+          <div style="flex:1;">
+            <div style="color:#475569;">↓ AI finishes speaking</div>
+            <div style="color:#94a3b8;font-size:11px;margin-top:4px;background:#1e293b;padding:6px;border-radius:6px;">→ Back to LISTENING state</div>
+          </div>
+          <div style="flex:1;">
+            <div style="color:#f59e0b;">↓ user talks over AI (barge-in)</div>
+            <div style="color:#94a3b8;font-size:11px;margin-top:4px;background:#1e293b;padding:6px;border-radius:6px;">TTS stops · partial response kept in context · STT captures correction · LLM responds knowing what it was mid-saying</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <div style="margin-left:15px;color:#475569;">↓ "Bye Toka" or tap End</div>
+
+    <div style="display:flex;align-items:center;gap:12px;">
+      <div style="width:32px;height:32px;border-radius:50%;background:#1e293b;border:2px solid #fbbf24;display:flex;align-items:center;justify-content:center;font-weight:bold;color:#fbbf24;flex-shrink:0;">■</div>
+      <div style="background:#1e293b;border-radius:8px;padding:10px;flex:1;">
+        <span style="color:#fbbf24;font-weight:bold;">SESSION END</span>
+        <span style="color:#94a3b8;"> — Full transcript saved to SQLite. LLM generates summary (local, no cloud needed). App returns to IDLE.</span>
+      </div>
+    </div>
+
+  </div>
+
+  <div style="margin-top:14px;background:#1e293b;border-radius:8px;padding:10px;border-left:3px solid #f59e0b;">
+    <div class="label" style="color:#f59e0b;">BARGE-IN NOTES</div>
+    <ul style="color:#94a3b8;font-size:11px;margin-top:6px;padding-left:16px;line-height:1.8;">
+      <li>Earbuds use case: echo problem eliminated (audio in ear, not in room)</li>
+      <li>Speaker use case: OS-level AEC filters speaker audio from mic input</li>
+      <li>VAD sensitivity: tunable setting — higher threshold outdoors (wind/traffic), lower indoors</li>
+    </ul>
+  </div>
+
+</div>

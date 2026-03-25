@@ -1,4 +1,4 @@
-import { SQLiteDatabase } from 'react-native-sqlite-storage';
+import { DB } from '@op-engineering/op-sqlite';
 import { Preferences, VADSensitivity, SessionMode, LLMMode } from '../../types';
 
 const DEFAULTS: Preferences = {
@@ -11,14 +11,13 @@ const DEFAULTS: Preferences = {
 };
 
 export class PreferencesRepository {
-  constructor(private db: SQLiteDatabase) {}
+  constructor(private db: DB) {}
 
   async get(): Promise<Preferences> {
-    const [result] = await this.db.executeSql('SELECT key, value FROM preferences');
+    const result = await this.db.execute('SELECT key, value FROM preferences');
     const map: Record<string, string> = {};
-    for (let i = 0; i < result.rows.length; i++) {
-      const row = result.rows.item(i);
-      map[row.key] = row.value;
+    for (const row of result.rows) {
+      map[row.key as string] = row.value as string;
     }
     return {
       vadSensitivity: (map.vadSensitivity as VADSensitivity) ?? DEFAULTS.vadSensitivity,
@@ -31,7 +30,7 @@ export class PreferencesRepository {
   }
 
   async set<K extends keyof Preferences>(key: K, value: Preferences[K]): Promise<void> {
-    await this.db.executeSql(
+    await this.db.execute(
       'INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)',
       [key, String(value)],
     );

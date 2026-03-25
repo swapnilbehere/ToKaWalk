@@ -1,8 +1,8 @@
-import { SQLiteDatabase } from 'react-native-sqlite-storage';
+import { DB } from '@op-engineering/op-sqlite';
 import { Turn, SpeakerRole, TurnStatus } from '../../types';
 
 export class TurnRepository {
-  constructor(private db: SQLiteDatabase) {}
+  constructor(private db: DB) {}
 
   async add(params: {
     sessionId: number;
@@ -10,23 +10,23 @@ export class TurnRepository {
     text: string;
     status?: TurnStatus;
   }): Promise<number> {
-    const [result] = await this.db.executeSql(
+    const result = await this.db.execute(
       'INSERT INTO turns (session_id, speaker, text, timestamp, status) VALUES (?, ?, ?, ?, ?)',
       [params.sessionId, params.speaker, params.text, Date.now(), params.status ?? 'completed'],
     );
-    return result.insertId;
+    return result.insertId!;
   }
 
   async getForSession(sessionId: number): Promise<Turn[]> {
-    const [result] = await this.db.executeSql(
+    const result = await this.db.execute(
       'SELECT * FROM turns WHERE session_id = ? ORDER BY timestamp ASC',
       [sessionId],
     );
-    return Array.from({ length: result.rows.length }, (_, i) => rowToTurn(result.rows.item(i)));
+    return result.rows.map(rowToTurn);
   }
 }
 
-function rowToTurn(row: any): Turn {
+function rowToTurn(row: Record<string, any>): Turn {
   return {
     id: row.id,
     sessionId: row.session_id,

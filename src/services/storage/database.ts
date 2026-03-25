@@ -1,18 +1,20 @@
-import SQLite from 'react-native-sqlite-storage';
+import { open, DB } from '@op-engineering/op-sqlite';
 
-SQLite.enablePromise(true);
+let db: DB | null = null;
 
-let db: SQLite.SQLiteDatabase | null = null;
-
-export async function getDatabase(): Promise<SQLite.SQLiteDatabase> {
+export function getDatabase(): DB {
   if (db) return db;
-  db = await SQLite.openDatabase({ name: 'tokawalk.db', location: 'default' });
-  await runMigrations(db);
+  db = open({ name: 'tokawalk.db' });
   return db;
 }
 
-async function runMigrations(database: SQLite.SQLiteDatabase): Promise<void> {
-  await database.executeSql(`
+export async function initDatabase(): Promise<void> {
+  const database = getDatabase();
+  await runMigrations(database);
+}
+
+async function runMigrations(database: DB): Promise<void> {
+  await database.execute(`
     CREATE TABLE IF NOT EXISTS sessions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       mode TEXT NOT NULL,
@@ -22,7 +24,7 @@ async function runMigrations(database: SQLite.SQLiteDatabase): Promise<void> {
       model_used TEXT NOT NULL
     )
   `);
-  await database.executeSql(`
+  await database.execute(`
     CREATE TABLE IF NOT EXISTS turns (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       session_id INTEGER NOT NULL,
@@ -33,7 +35,7 @@ async function runMigrations(database: SQLite.SQLiteDatabase): Promise<void> {
       FOREIGN KEY (session_id) REFERENCES sessions(id)
     )
   `);
-  await database.executeSql(`
+  await database.execute(`
     CREATE TABLE IF NOT EXISTS summaries (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       session_id INTEGER NOT NULL UNIQUE,
@@ -42,7 +44,7 @@ async function runMigrations(database: SQLite.SQLiteDatabase): Promise<void> {
       FOREIGN KEY (session_id) REFERENCES sessions(id)
     )
   `);
-  await database.executeSql(`
+  await database.execute(`
     CREATE TABLE IF NOT EXISTS preferences (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
