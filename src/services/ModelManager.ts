@@ -11,16 +11,15 @@ import { unzip } from 'react-native-zip-archive';
 const DOCS_DIR =
   Platform.OS === 'ios' ? DocumentDirectoryPath : ExternalDirectoryPath;
 
-// Exported so WakeWordService and LocalLLMService can reference the same paths
 export const VOSK_MODEL_DIR = `${DOCS_DIR}/vosk-model-small-en-us-0.15`;
-export const LLM_MODEL_PATH = `${DOCS_DIR}/llama-3.2-3b.gguf`;
+export const LLM_MODEL_PATH = `${DOCS_DIR}/qwen2.5-1.5b-instruct-q4_k_m.gguf`;
 
 const VOSK_ZIP_URL =
   'https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip';
 
-// Llama-3.2-3B Q4_K_M (~2 GB) from Bartowski's GGUF repo on HuggingFace
+// Qwen2.5-1.5B-Instruct Q4_K_M (~900 MB) — fits comfortably in 2 GB free RAM
 const LLM_URL =
-  'https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf';
+  'https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf';
 
 export type ModelKey = 'vosk' | 'llm';
 

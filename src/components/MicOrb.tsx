@@ -20,11 +20,13 @@ export function MicOrb({ state }: Props) {
       pulse.stopAnimation();
       pulse.setValue(1);
     }
-  }, [state]);
+  }, [pulse, state]);
 
   const borderColor =
     state === 'listening' ? colors.green :
+    state === 'recovering' ? colors.orange :
     state === 'speaking' ? colors.orange :
+    state === 'degraded' ? colors.textMuted :
     colors.borderActive;
 
   return (

@@ -1,9 +1,32 @@
 export type SessionMode = 'just-walk' | 'brain-dump' | 'journal' | 'learn';
 export type LLMMode = 'local' | 'online';
+export type InputMode = 'voice' | 'text';
 export type SpeakerRole = 'user' | 'ai';
 export type TurnStatus = 'completed' | 'interrupted';
 export type VADSensitivity = 'indoor' | 'outdoor';
-export type ConversationState = 'idle' | 'listening' | 'thinking' | 'speaking';
+export type ConversationState =
+  | 'idle'
+  | 'listening'
+  | 'processing'
+  | 'speaking'
+  | 'recovering'
+  | 'degraded';
+
+export type STTErrorKind =
+  | 'no_match'
+  | 'partial_no_final'
+  | 'client_error'
+  | 'network_error'
+  | 'unavailable'
+  | 'unknown';
+
+export interface STTErrorInfo {
+  kind: STTErrorKind;
+  message: string;
+  code?: string;
+  partialText?: string;
+  sawFinalResult: boolean;
+}
 
 export interface Turn {
   id: number;

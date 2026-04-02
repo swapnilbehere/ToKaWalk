@@ -14,7 +14,7 @@ interface Props {
 const STATUS_LABEL: Partial<Record<SetupStatus, string>> = {
   checking: 'Checking...',
   'requesting-permissions': 'Requesting permissions...',
-  'downloading-vosk': 'Downloading wake word model',
+  'downloading-vosk': 'Downloading speech recognition model',
   'downloading-llm': 'Downloading language model',
 };
 
@@ -78,7 +78,7 @@ export function SetupScreen({ status, voskProgress, llmProgress, errorMessage, o
           Downloading models for offline use. This happens once.
         </Text>
 
-        <ProgressBar label="Wake word model" progress={voskProgress} size="~40 MB" />
+        <ProgressBar label="Speech recognition model" progress={voskProgress} size="~40 MB" />
         <ProgressBar label="Language model"  progress={llmProgress}  size="~2 GB"  />
 
         <Text style={styles.status}>{STATUS_LABEL[status] ?? ''}</Text>

@@ -4,9 +4,20 @@ import { LLMMessage } from '../../types';
 
 export class LocalLLMService implements LLMService {
   private context: LlamaContext | null = null;
+  private loadPromise: Promise<void> | null = null;
 
-  async load(modelPath: string): Promise<void> {
-    this.context = await initLlama({ model: modelPath, n_ctx: 4096 });
+  constructor(private modelPath: string) {}
+
+  async load(modelPath = this.modelPath): Promise<void> {
+    if (this.context) return;
+    if (!this.loadPromise) {
+      this.loadPromise = (async () => {
+        this.context = await initLlama({ model: modelPath, n_ctx: 2048, n_threads: 2 });
+      })().finally(() => {
+        this.loadPromise = null;
+      });
+    }
+    await this.loadPromise;
   }
 
   isReady(): boolean {
@@ -14,7 +25,16 @@ export class LocalLLMService implements LLMService {
   }
 
   async *generate(messages: LLMMessage[]): AsyncGenerator<string> {
+    if (!this.context) {
+      await this.load();
+    }
     if (!this.context) throw new Error('Local model not loaded');
+
+    console.log('[LocalLLM] Starting completion', {
+      messageCount: messages.length,
+      lastRole: messages[messages.length - 1]?.role ?? null,
+      lastContentPreview: messages[messages.length - 1]?.content?.slice(0, 80) ?? '',
+    });
 
     const tokens: string[] = [];
     let finished = false;
@@ -26,7 +46,11 @@ export class LocalLLMService implements LLMService {
     }));
 
     this.context.completion(
-      { messages: rnMessages },
+      {
+        messages: rnMessages,
+        stop: ['<|im_end|>'],
+        temperature: 0.7,
+      },
       (data: TokenData) => {
         tokens.push(data.token);
         resolve?.();
@@ -34,6 +58,10 @@ export class LocalLLMService implements LLMService {
     ).then(() => {
       finished = true;
       resolve?.();
+    }).catch((err: unknown) => {
+      finished = true;
+      resolve?.();
+      console.error('[LocalLLM] completion error', err);
     });
 
     while (!finished || tokens.length > 0) {

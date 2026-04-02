@@ -24,5 +24,6 @@ module.exports = {
     'react-native-gesture-handler': '<rootDir>/__mocks__/gestureHandler.ts',
     '@react-navigation/native': '<rootDir>/__mocks__/reactNavigation.ts',
     '@react-navigation/stack': '<rootDir>/__mocks__/reactNavigation.ts',
+    'react-native-sse': '<rootDir>/__mocks__/reactNativeSse.ts',
   },
 };

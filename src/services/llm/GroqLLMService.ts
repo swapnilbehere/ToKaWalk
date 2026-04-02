@@ -1,3 +1,4 @@
+import EventSource from 'react-native-sse';
 import { LLMService } from './LLMService';
 import { LLMMessage } from '../../types';
 
@@ -7,6 +8,10 @@ const MODEL = 'llama-3.1-8b-instant';
 export class GroqLLMService implements LLMService {
   constructor(private apiKey: string) {}
 
+  setApiKey(key: string): void {
+    this.apiKey = key;
+  }
+
   isReady(): boolean {
     return this.apiKey.trim().length > 0;
   }
@@ -14,43 +19,101 @@ export class GroqLLMService implements LLMService {
   async *generate(messages: LLMMessage[]): AsyncGenerator<string> {
     if (!this.isReady()) throw new Error('Groq API key not set');
 
-    const response = await fetch(GROQ_URL, {
+    console.log('[Groq] Starting request', {
+      model: MODEL,
+      messageCount: messages.length,
+      lastRole: messages[messages.length - 1]?.role ?? null,
+      lastContentPreview: messages[messages.length - 1]?.content?.slice(0, 80) ?? '',
+    });
+
+    const tokenQueue: string[] = [];
+    let wakeConsumer: (() => void) | null = null;
+    let streamError: Error | null = null;
+    let done = false;
+    let tokenCount = 0;
+
+    const finish = (error?: Error) => {
+      if (done) return;
+      if (error) streamError = error;
+      done = true;
+      if (wakeConsumer) {
+        wakeConsumer();
+        wakeConsumer = null;
+      }
+    };
+
+    const eventSource = new EventSource(GROQ_URL, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${this.apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ model: MODEL, messages, stream: true }),
+      pollingInterval: 0,
+      timeout: 30000,
     });
 
-    if (!response.ok) {
-      throw new Error(`Groq error: ${response.status}`);
+    eventSource.addEventListener('open', () => {
+      console.log('[Groq] SSE connection opened');
+    });
+
+    eventSource.addEventListener('message', (event) => {
+      const data = event.data?.trim();
+      if (!data) return;
+      if (data === '[DONE]') {
+        console.log('[Groq] Stream completed', { tokenCount });
+        finish();
+        return;
+      }
+
+      try {
+        const parsed = JSON.parse(data);
+        const token = parsed.choices?.[0]?.delta?.content;
+        if (token) {
+          tokenCount += 1;
+          tokenQueue.push(token);
+          if (wakeConsumer) {
+            wakeConsumer();
+            wakeConsumer = null;
+          }
+        }
+      } catch (error) {
+        console.warn('[Groq] Skipping malformed stream line', {
+          error,
+          linePreview: data.slice(0, 120),
+        });
+      }
+    });
+
+    eventSource.addEventListener('error', (event) => {
+      const message = 'message' in event ? event.message : 'Unknown Groq SSE error';
+      console.error('[Groq] SSE error', event);
+      finish(new Error(message));
+    });
+
+    eventSource.addEventListener('close', () => {
+      console.log('[Groq] SSE connection closed', { tokenCount, done });
+      finish();
+    });
+
+    try {
+      while (!done || tokenQueue.length > 0) {
+        if (tokenQueue.length === 0) {
+          await new Promise<void>((resolve) => {
+            wakeConsumer = resolve;
+          });
+          continue;
+        }
+
+        yield tokenQueue.shift()!;
+      }
+    } finally {
+      eventSource.removeAllEventListeners();
+      eventSource.close();
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const r = response as any;
-    const reader = r.body.getReader();
-    const decoder = new (globalThis as any).TextDecoder();
-    let buffer = '';
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() ?? '';
-
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed.startsWith('data: ')) continue;
-        const data = trimmed.slice(6);
-        if (data === '[DONE]') return;
-        try {
-          const parsed = JSON.parse(data);
-          const token = parsed.choices?.[0]?.delta?.content;
-          if (token) yield token;
-        } catch { /* skip malformed lines */ }
-      }
+    if (streamError) {
+      throw streamError;
     }
   }
 }

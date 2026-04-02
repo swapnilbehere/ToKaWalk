@@ -23,6 +23,10 @@ export class ContextManager {
     this.pruneIfNeeded();
   }
 
+  getTurnCount(): number {
+    return this.turns.length;
+  }
+
   getMessages(): LLMMessage[] {
     return [{ role: 'system', content: this.systemPrompt }, ...this.turns];
   }

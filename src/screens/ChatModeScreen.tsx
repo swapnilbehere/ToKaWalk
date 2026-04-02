@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, FlatList, TouchableOpacity, Text, StyleSheet } from 'react-native';
+import { View, FlatList, TouchableOpacity, Text, TextInput, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { ChatBubble } from '../components/ChatBubble';
 import { LLMModeBadge } from '../components/LLMModeBadge';
@@ -15,34 +15,68 @@ export function ChatModeScreen() {
   const route = useRoute<ChatModeRouteProp>();
   const navigation = useNavigation<any>();
   const { mode } = route.params;
-  const { state, llmMode, endSession, toggleLLMMode } = useConversationEngine();
+  const { llmMode, startSession, processTextInput, toggleLLMMode } = useConversationEngine();
   const [turns, setTurns] = useState<Turn[]>([]);
   const [elapsed, setElapsed] = useState(0);
+  const [inputText, setInputText] = useState('');
   const listRef = useRef<FlatList>(null);
+  const inputRef = useRef<TextInput>(null);
 
-  // Poll turns from DB every second (simple approach for v1)
   useEffect(() => {
-    const interval = setInterval(async () => {
-      // sessionId would be tracked in a shared context in a fuller implementation
-      // For now, load the most recent session's turns
-    }, 1000);
+    let mounted = true;
+    console.log('[ChatMode] Mounting screen', { mode });
+    if (mounted) startSession(mode, 'text');
     const timer = setInterval(() => setElapsed(e => e + 1), 1000);
-    return () => { clearInterval(interval); clearInterval(timer); };
-  }, []);
+    return () => {
+      mounted = false;
+      console.log('[ChatMode] Unmounting screen');
+      clearInterval(timer);
+    };
+  }, [mode, startSession]);
 
   useEffect(() => {
-    listRef.current?.scrollToEnd({ animated: true });
+    // Avoid imperative scroll churn while debugging Fabric crashes on async updates.
   }, [turns]);
 
   const elapsedStr = `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}`;
 
+  const handleSend = async () => {
+    const text = inputText.trim();
+    if (!text) return;
+    setInputText('');
+    const userTurn: Turn = { id: Date.now(), sessionId: 0, speaker: 'user', text, timestamp: Date.now(), status: 'completed' };
+    setTurns(prev => [...prev, userTurn]);
+    try {
+      console.log('[ChatMode] sending text:', text);
+      const aiResponse = await processTextInput(text);
+      console.log('[ChatMode] received response:', {
+        status: aiResponse.status,
+        textLength: aiResponse.text.length,
+        textPreview: aiResponse.text.slice(0, 120),
+      });
+      if (aiResponse.text.trim()) {
+        const aiTurn: Turn = {
+          id: Date.now() + 1,
+          sessionId: 0,
+          speaker: 'ai',
+          text: aiResponse.text,
+          timestamp: Date.now(),
+          status: aiResponse.status,
+        };
+        setTurns(prev => [...prev, aiTurn]);
+      }
+    } catch (error) {
+      console.error('[ChatMode] send failed:', error);
+    }
+  };
+
   return (
-    <View style={styles.screen}>
+    <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <View style={styles.header}>
         <Text style={styles.modeLabel}>{MODE_LABELS[mode]} · {elapsedStr}</Text>
         <View style={styles.headerRight}>
           <LLMModeBadge mode={llmMode} onToggle={toggleLLMMode} />
-          <TouchableOpacity onPress={() => navigation.navigate('WalkMode', { mode })}>
+          <TouchableOpacity onPress={() => navigation.replace('WalkMode', { mode })}>
             <Text style={styles.walkIcon}>🚶</Text>
           </TouchableOpacity>
         </View>
@@ -57,12 +91,23 @@ export function ChatModeScreen() {
       />
 
       <View style={styles.inputBar}>
-        <Text style={styles.placeholder}>just talk or tap mic</Text>
-        <TouchableOpacity style={styles.micBtn}>
-          <Text style={styles.micIcon}>🎙️</Text>
+        <TextInput
+          ref={inputRef}
+          style={styles.input}
+          value={inputText}
+          onChangeText={setInputText}
+          placeholder="Type a message..."
+          placeholderTextColor={colors.textFaint}
+          onSubmitEditing={handleSend}
+          returnKeyType="send"
+          multiline={false}
+          autoFocus={true}
+        />
+        <TouchableOpacity style={styles.sendBtn} onPress={handleSend}>
+          <Text style={styles.sendIcon}>➤</Text>
         </TouchableOpacity>
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -74,7 +119,7 @@ const styles = StyleSheet.create({
   walkIcon: { fontSize: 18 },
   list: { padding: 16, paddingBottom: 8 },
   inputBar: { flexDirection: 'row', alignItems: 'center', padding: 12, borderTopWidth: 1, borderTopColor: colors.border, gap: 10 },
-  placeholder: { flex: 1, color: colors.textFaint, fontSize: 13, borderWidth: 1, borderColor: colors.border, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8 },
-  micBtn: { width: 40, height: 40, borderRadius: 20, borderWidth: 2, borderColor: colors.borderActive, alignItems: 'center', justifyContent: 'center' },
-  micIcon: { fontSize: 18 },
+  input: { flex: 1, color: colors.text ?? '#fff', fontSize: 14, borderWidth: 1, borderColor: colors.border, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8, backgroundColor: colors.surface },
+  sendBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.borderActive ?? '#4a9', alignItems: 'center', justifyContent: 'center' },
+  sendIcon: { color: '#fff', fontSize: 16 },
 });

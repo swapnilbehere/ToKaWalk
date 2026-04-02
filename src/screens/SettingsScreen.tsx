@@ -5,9 +5,11 @@ import { Preferences } from '../types';
 import { colors } from '../constants/colors';
 import { getDatabase } from '../services/storage/database';
 import { PreferencesRepository } from '../services/storage/PreferencesRepository';
+import { useConversationEngine } from '../context/ConversationEngineContext';
 
 export function SettingsScreen() {
   const navigation = useNavigation();
+  const { updateGroqApiKey } = useConversationEngine();
   const [prefs, setPrefs] = useState<Preferences | null>(null);
   const [repo, setRepo] = useState<PreferencesRepository | null>(null);
   const [apiKeyMasked, setApiKeyMasked] = useState(true);
@@ -69,7 +71,7 @@ export function SettingsScreen() {
           value={apiKeyMasked && prefs.groqApiKey ? '••••••••••••••••' : prefs.groqApiKey}
           onFocus={() => setApiKeyMasked(false)}
           onBlur={() => setApiKeyMasked(true)}
-          onChangeText={v => update('groqApiKey', v)}
+          onChangeText={v => { updateGroqApiKey(v); setPrefs({ ...prefs!, groqApiKey: v }); }}
           placeholder="gsk_..."
           placeholderTextColor={colors.textFaint}
           autoCapitalize="none"
@@ -78,7 +80,7 @@ export function SettingsScreen() {
       </View>
 
       <Text style={styles.sectionLabel}>MODEL INFO</Text>
-      <Text style={styles.hint}>Local: Llama 3.2 3B (on-device, offline)</Text>
+      <Text style={styles.hint}>Local: Qwen 2.5 1.5B (on-device, offline)</Text>
       <Text style={styles.hint}>Online: Llama 3.1 8B via Groq (internet required)</Text>
     </ScrollView>
   );

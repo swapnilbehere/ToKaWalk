@@ -12,8 +12,10 @@ type WalkModeRouteProp = RouteProp<RootStackParamList, 'WalkMode'>;
 
 const STATE_LABELS: Record<string, string> = {
   listening: 'Listening...',
-  thinking: 'Thinking...',
+  processing: 'Thinking...',
   speaking: 'Toka is speaking...',
+  recovering: 'Recovering mic...',
+  degraded: 'Mic issue. Tap End or try again.',
   idle: 'just talk — "Bye Toka" to end',
 };
 
@@ -21,14 +23,14 @@ export function WalkModeScreen() {
   const route = useRoute<WalkModeRouteProp>();
   const navigation = useNavigation<any>();
   const { mode } = route.params;
-  const { state, llmMode, startSession, endSession, toggleLLMMode } = useConversationEngine();
+  const { state, statusDetail, llmMode, startSession, endSession, toggleLLMMode } = useConversationEngine();
   const [elapsed, setElapsed] = useState(0);
 
   useEffect(() => {
-    startSession(mode);
+    startSession(mode, 'voice');
     const timer = setInterval(() => setElapsed(e => e + 1), 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [mode, startSession]);
 
   const elapsedStr = `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}`;
 
@@ -47,10 +49,11 @@ export function WalkModeScreen() {
       <View style={styles.center}>
         <MicOrb state={state} />
         <Text style={styles.status}>{STATE_LABELS[state] ?? ''}</Text>
+        {statusDetail ? <Text style={styles.statusDetail}>{statusDetail}</Text> : null}
       </View>
 
       <View style={styles.controls}>
-        <TouchableOpacity style={styles.btn} onPress={() => navigation.navigate('ChatMode', { mode })}>
+        <TouchableOpacity style={styles.btn} onPress={() => navigation.replace('ChatMode', { mode })}>
           <Text style={styles.btnIcon}>💬</Text>
           <Text style={styles.btnLabel}>Chat Mode</Text>
         </TouchableOpacity>
@@ -73,6 +76,7 @@ const styles = StyleSheet.create({
   modeLabel: { color: colors.textFaint, fontSize: 11 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   status: { color: colors.green, fontSize: 13, marginTop: 16 },
+  statusDetail: { color: colors.textFaint, fontSize: 11, marginTop: 8, textAlign: 'center', maxWidth: 220 },
   controls: { flexDirection: 'row', justifyContent: 'center', gap: 28, paddingBottom: 20 },
   btn: { alignItems: 'center' },
   btnIcon: { fontSize: 22, color: colors.textMuted, backgroundColor: colors.surface, padding: 8, borderRadius: 20, overflow: 'hidden', borderWidth: 1, borderColor: colors.border },

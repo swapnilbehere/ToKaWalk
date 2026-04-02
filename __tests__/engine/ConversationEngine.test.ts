@@ -1,7 +1,6 @@
 import { ConversationEngine } from '../../src/engine/ConversationEngine';
 
 // All services mocked
-const mockWakeWord = { start: jest.fn(), stop: jest.fn() };
 const mockSTT = { init: jest.fn(), startListening: jest.fn(), stopListening: jest.fn(), destroy: jest.fn() };
 const mockTTS = { init: jest.fn(), feedToken: jest.fn(), flush: jest.fn(), stop: jest.fn() };
 const mockLLM = {
@@ -15,10 +14,10 @@ const mockSummaryRepo = { save: jest.fn(), getForSession: jest.fn() };
 describe('ConversationEngine', () => {
   it('starts in idle state', () => {
     const engine = new ConversationEngine({
-      wakeWord: mockWakeWord as any,
       stt: mockSTT as any,
       tts: mockTTS as any,
-      llm: mockLLM as any,
+      localLLM: mockLLM as any,
+      onlineLLM: mockLLM as any,
       sessionRepo: mockSessionRepo as any,
       turnRepo: mockTurnRepo as any,
       summaryRepo: mockSummaryRepo as any,
@@ -28,10 +27,10 @@ describe('ConversationEngine', () => {
 
   it('detects "bye toka" phrase and triggers session end', () => {
     const engine = new ConversationEngine({
-      wakeWord: mockWakeWord as any,
       stt: mockSTT as any,
       tts: mockTTS as any,
-      llm: mockLLM as any,
+      localLLM: mockLLM as any,
+      onlineLLM: mockLLM as any,
       sessionRepo: mockSessionRepo as any,
       turnRepo: mockTurnRepo as any,
       summaryRepo: mockSummaryRepo as any,
