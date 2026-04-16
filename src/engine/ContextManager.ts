@@ -1,8 +1,9 @@
 import { LLMMessage, SessionMode } from '../types';
 import { MODE_SYSTEM_PROMPTS } from '../constants/modes';
 
-const MAX_TOKENS = 3800;
+const MAX_TOKENS = 2000;
 const CHARS_PER_TOKEN = 4;
+const MAX_TURNS = 10; // max messages (user+assistant combined) kept in context
 
 export class ContextManager {
   private turns: LLMMessage[] = [];
@@ -40,6 +41,11 @@ export class ContextManager {
   }
 
   private pruneIfNeeded(): void {
+    // Enforce max turn count first (keeps most recent exchanges)
+    while (this.turns.length > MAX_TURNS) {
+      this.turns.shift();
+    }
+    // Then enforce token budget
     while (this.estimateTokens() > MAX_TOKENS && this.turns.length > 2) {
       this.turns.shift();
     }

@@ -1,7 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import {
-  checkModelsReady,
-  downloadVosk,
+  checkLLMReady,
   downloadLLM,
   DownloadProgress,
 } from '../services/ModelManager';
@@ -14,14 +13,12 @@ export type SetupStatus =
   | 'checking'
   | 'requesting-permissions'
   | 'permissions-denied'
-  | 'downloading-vosk'
   | 'downloading-llm'
   | 'ready'
   | 'error';
 
 export interface ModelSetupState {
   status: SetupStatus;
-  voskProgress: number;  // 0–1
   llmProgress: number;   // 0–1
   errorMessage: string | null;
 }
@@ -29,7 +26,6 @@ export interface ModelSetupState {
 export function useModelSetup() {
   const [state, setState] = useState<ModelSetupState>({
     status: 'checking',
-    voskProgress: 0,
     llmProgress: 0,
     errorMessage: null,
   });
@@ -46,17 +42,9 @@ export function useModelSetup() {
         return;
       }
 
-      // Step 2: models
-      const { vosk, llm } = await checkModelsReady();
-
-      if (!vosk) {
-        setState(s => ({ ...s, status: 'downloading-vosk' }));
-        await downloadVosk((p: DownloadProgress) =>
-          setState(s => ({ ...s, voskProgress: p.fraction })),
-        );
-      }
-
-      if (!llm) {
+      // Step 2: LLM model
+      const llmReady = await checkLLMReady();
+      if (!llmReady) {
         setState(s => ({ ...s, status: 'downloading-llm' }));
         await downloadLLM((p: DownloadProgress) =>
           setState(s => ({ ...s, llmProgress: p.fraction })),

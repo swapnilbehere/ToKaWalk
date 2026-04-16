@@ -1,5 +1,26 @@
 # Secrets
 key.txt
+*.groq_key
+tokaWalk_groq.md
+
+# Dev notes (scratch files)
+chat.md
+inst.md
+codex_read.md
+update_walk_mode.md
+
+# Generated JS bundle (built artifact — do not commit)
+android/app/src/main/assets/index.android.bundle
+android/app/src/main/res/drawable-mdpi/
+android/app/src/main/res/drawable-xhdpi/
+android/app/src/main/res/drawable-xxhdpi/
+android/app/src/main/res/drawable-xxxhdpi/
+android/app/src/main/res/raw/
+
+# LLM model files (too large for git)
+*.gguf
+*.bin
+vosk-model*/
 
 # OSX
 #

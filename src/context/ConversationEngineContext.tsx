@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { ConversationState, SessionMode, LLMMode, InputMode } from '../types';
-import { VOSK_MODEL_DIR, LLM_MODEL_PATH } from '../services/ModelManager';
+import { LLM_MODEL_PATH } from '../services/ModelManager';
 import { ConversationEngine } from '../engine/ConversationEngine';
 import { STTService } from '../services/stt/STTService';
 import { TTSService } from '../services/tts/TTSService';
@@ -17,6 +17,7 @@ interface ConversationEngineContextValue {
   state: ConversationState;
   statusDetail: string | null;
   llmMode: LLMMode;
+  sttMode: 'online' | 'offline';
   ready: boolean;
   startSession: (mode: SessionMode, inputMode?: InputMode) => void;
   endSession: () => void;
@@ -35,6 +36,7 @@ export function ConversationEngineProvider({ children }: { children: React.React
   const [state, setState] = useState<ConversationState>('idle');
   const [statusDetail, setStatusDetail] = useState<string | null>(null);
   const [llmMode, setLlmMode] = useState<LLMMode>('local');
+  const [sttMode, setSttMode] = useState<'online' | 'offline'>('online');
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
@@ -53,7 +55,7 @@ export function ConversationEngineProvider({ children }: { children: React.React
         await tts.init(prefs.ttsRate);
 
         const engine = new ConversationEngine({
-          stt: new STTService(VOSK_MODEL_DIR),
+          stt: new STTService(),
           tts,
           localLLM,
           onlineLLM: groqLLM,
@@ -66,6 +68,7 @@ export function ConversationEngineProvider({ children }: { children: React.React
 
         engine.setOnStateChange(setState);
         engine.setOnStatusDetailChange(setStatusDetail);
+        engine.setOnSttModeChange(setSttMode);
         await engine.startIdle();
         engineRef.current = engine;
         if (prefs.llmMode === 'online') {
@@ -77,6 +80,15 @@ export function ConversationEngineProvider({ children }: { children: React.React
 
         // Pre-warm the local model in the background so the first response is instant
         localLLM.load().catch(e => console.warn('[Engine] Local model pre-warm failed', e));
+
+        // Trigger on-device STT model download silently in background (Android 13+).
+        // No-op if already installed or on older OS versions.
+        const stt = new STTService();
+        stt.triggerOnDeviceModelDownload()
+          .then(triggered => {
+            if (triggered) console.log('[Engine] On-device STT model download triggered');
+          })
+          .catch(() => {});
       } catch (e) {
         console.error('[Engine] Failed to initialize:', e);
       }
@@ -121,7 +133,7 @@ export function ConversationEngineProvider({ children }: { children: React.React
   }, []);
 
   return (
-    <ConversationEngineContext.Provider value={{ state, statusDetail, llmMode, ready, startSession, endSession, toggleLLMMode, processTextInput, updateGroqApiKey }}>
+    <ConversationEngineContext.Provider value={{ state, statusDetail, llmMode, sttMode, ready, startSession, endSession, toggleLLMMode, processTextInput, updateGroqApiKey }}>
       {children}
     </ConversationEngineContext.Provider>
   );

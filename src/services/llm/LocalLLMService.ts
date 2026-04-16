@@ -38,6 +38,7 @@ export class LocalLLMService implements LLMService {
 
     const tokens: string[] = [];
     let finished = false;
+    let completionError: unknown = null;
     let resolve: (() => void) | null = null;
 
     const rnMessages: RNLlamaOAICompatibleMessage[] = messages.map(m => ({
@@ -48,8 +49,10 @@ export class LocalLLMService implements LLMService {
     this.context.completion(
       {
         messages: rnMessages,
-        stop: ['<|im_end|>'],
+        stop: ['<|im_end|>', '<|endoftext|>', '<|im_start|>'],
+        n_predict: 256,
         temperature: 0.7,
+        repeat_penalty: 1.1,
       },
       (data: TokenData) => {
         tokens.push(data.token);
@@ -59,9 +62,9 @@ export class LocalLLMService implements LLMService {
       finished = true;
       resolve?.();
     }).catch((err: unknown) => {
+      completionError = err;
       finished = true;
       resolve?.();
-      console.error('[LocalLLM] completion error', err);
     });
 
     while (!finished || tokens.length > 0) {
@@ -71,6 +74,12 @@ export class LocalLLMService implements LLMService {
       while (tokens.length > 0) {
         yield tokens.shift()!;
       }
+    }
+
+    if (completionError !== null) {
+      throw completionError instanceof Error
+        ? completionError
+        : new Error(String(completionError));
     }
   }
 }

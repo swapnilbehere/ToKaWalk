@@ -5,7 +5,6 @@ import { colors } from '../constants/colors';
 
 interface Props {
   status: SetupStatus;
-  voskProgress: number;
   llmProgress: number;
   errorMessage: string | null;
   onRetry: () => void;
@@ -14,7 +13,6 @@ interface Props {
 const STATUS_LABEL: Partial<Record<SetupStatus, string>> = {
   checking: 'Checking...',
   'requesting-permissions': 'Requesting permissions...',
-  'downloading-vosk': 'Downloading speech recognition model',
   'downloading-llm': 'Downloading language model',
 };
 
@@ -33,7 +31,7 @@ function ProgressBar({ label, progress, size }: { label: string; progress: numbe
   );
 }
 
-export function SetupScreen({ status, voskProgress, llmProgress, errorMessage, onRetry }: Props) {
+export function SetupScreen({ status, llmProgress, errorMessage, onRetry }: Props) {
   if (status === 'permissions-denied') {
     return (
       <View style={styles.screen}>
@@ -75,14 +73,13 @@ export function SetupScreen({ status, voskProgress, llmProgress, errorMessage, o
       <View style={styles.content}>
         <Text style={styles.heading}>First launch setup</Text>
         <Text style={styles.subheading}>
-          Downloading models for offline use. This happens once.
+          Downloading the language model for offline use. This happens once.
         </Text>
 
-        <ProgressBar label="Speech recognition model" progress={voskProgress} size="~40 MB" />
-        <ProgressBar label="Language model"  progress={llmProgress}  size="~2 GB"  />
+        <ProgressBar label="Language model" progress={llmProgress} size="~2 GB" />
 
         <Text style={styles.status}>{STATUS_LABEL[status] ?? ''}</Text>
-        <Text style={styles.hint}>Keep the app open. Wi-Fi recommended for the language model.</Text>
+        <Text style={styles.hint}>Keep the app open. Wi-Fi recommended.</Text>
       </View>
     </View>
   );

@@ -24,9 +24,7 @@
     "react-native-safe-area-context": "^5.7.0",
     "react-native-screens": "^4.24.0",
     "react-native-sse": "^1.2.1",
-    "react-native-tts": "^4.1.1",
-    "react-native-vosk": "^0.2.0",
-    "react-native-zip-archive": "^5.0.6"
+    "react-native-tts": "^4.1.1"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",

@@ -10,7 +10,7 @@ import { ErrorBoundary } from './src/components/ErrorBoundary';
 
 export default function App() {
   const [dbReady, setDbReady] = useState(false);
-  const { status, voskProgress, llmProgress, errorMessage, retry } = useModelSetup();
+  const { status, llmProgress, errorMessage, retry } = useModelSetup();
 
   useEffect(() => {
     initDatabase().then(() => setDbReady(true)).catch(console.error);
@@ -25,7 +25,6 @@ export default function App() {
       ) : (
         <SetupScreen
           status={status}
-          voskProgress={voskProgress}
           llmProgress={llmProgress}
           errorMessage={errorMessage}
           onRetry={retry}

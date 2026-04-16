@@ -1,17 +1,54 @@
-import Vosk from 'react-native-vosk';
-import { STTErrorInfo } from '../../types';
+import Voice, { SpeechResultsEvent, SpeechErrorEvent } from '@react-native-voice/voice';
+import { NativeModules, Platform } from 'react-native';
+import { STTErrorInfo, STTErrorKind } from '../../types';
+
+function getDeviceLocale(): string {
+  try {
+    const locale = Intl.DateTimeFormat().resolvedOptions().locale;
+    if (locale) return locale;
+  } catch {}
+  if (Platform.OS === 'android') {
+    return NativeModules.I18nManager?.localeIdentifier?.replace('_', '-') ?? 'en-US';
+  }
+  return 'en-US';
+}
+
+// Android SpeechRecognizer error code → STTErrorKind
+function mapErrorCode(code: string): STTErrorKind {
+  switch (code) {
+    case '1':  // ERROR_NETWORK_TIMEOUT
+    case '2':  // ERROR_NETWORK
+      return 'network_error';
+    case '11': // ERROR_SERVER_DISCONNECTED — on Samsung fires as a transient
+               // recognizer lifecycle reset (not a real network failure); treat
+               // as soft timeout so it never counts toward the degraded limit.
+      return 'speech_timeout';
+    case '3':  // ERROR_AUDIO
+    case '5':  // ERROR_CLIENT
+    case '8':  // ERROR_RECOGNIZER_BUSY
+    case '10': // ERROR_TOO_MANY_REQUESTS
+      return 'client_error';
+    case '4':  // ERROR_SERVER
+    case '9':  // ERROR_INSUFFICIENT_PERMISSIONS
+    case '12': // ERROR_LANGUAGE_NOT_SUPPORTED
+    case '13': // ERROR_LANGUAGE_UNAVAILABLE
+    case '14': // ERROR_CANNOT_CHECK_SUPPORT
+    case '15': // ERROR_CANNOT_LISTEN_TO_DOWNLOAD_EVENTS
+      return 'unavailable';
+    case '6':  // ERROR_SPEECH_TIMEOUT (~10s of silence)
+      return 'speech_timeout';
+    case '7':  // ERROR_NO_MATCH
+      return 'no_match';
+    default:
+      return 'unknown';
+  }
+}
 
 export class STTService {
-  private vosk: Vosk | null = null;
-  private modelLoaded = false;
   private listening = false;
-  private resultListener: { remove: () => void } | null = null;
-  private finalResultListener: { remove: () => void } | null = null;
-  private errorListener: { remove: () => void } | null = null;
+  private resultDispatched = false;
   private onResultCb: ((text: string) => void | Promise<void>) | null = null;
   private onErrorCb: ((error: STTErrorInfo) => void) | null = null;
-
-  constructor(private modelPath: string) {}
 
   init(callbacks: {
     onResult: (text: string) => void | Promise<void>;
@@ -19,150 +56,136 @@ export class STTService {
   }): void {
     this.onResultCb = callbacks.onResult;
     this.onErrorCb = callbacks.onError;
-    console.log('[STT] Initialized Vosk STT');
+
+    Voice.onSpeechResults = (event: SpeechResultsEvent) => {
+      this.listening = false;
+      this.resultDispatched = true;
+      const text = (event.value?.[0] ?? '').trim();
+      console.log('[STT] onSpeechResults:', text);
+      if (text) {
+        if (this.onResultCb) {
+          Promise.resolve(this.onResultCb(text)).catch(e =>
+            console.error('[STT] Result callback failed', e),
+          );
+        }
+      } else {
+        this.onErrorCb?.({
+          kind: 'no_match',
+          message: 'No speech detected',
+          sawFinalResult: true,
+        });
+      }
+    };
+
+    Voice.onSpeechPartialResults = (event: SpeechResultsEvent) => {
+      const partial = event.value?.[0] ?? '';
+      if (partial) console.log('[STT] partial:', partial);
+    };
+
+    Voice.onSpeechError = (event: SpeechErrorEvent) => {
+      this.listening = false;
+      const code = String(event.error?.code ?? '');
+      const message = event.error?.message ?? 'STT error';
+      console.warn('[STT] onSpeechError:', { code, message });
+      // Suppress errors that arrive after a result was already dispatched —
+      // these are side effects of Voice.stop() being called post-result.
+      if (this.resultDispatched) {
+        console.log('[STT] Suppressing post-result error', { code });
+        return;
+      }
+      this.onErrorCb?.({
+        kind: mapErrorCode(code),
+        message,
+        code,
+        sawFinalResult: false,
+      });
+    };
+
+    // onSpeechEnd fires when VAD detects silence (before onSpeechResults/onSpeechError).
+    // Only used here for state tracking — do not dispatch errors from it.
+    Voice.onSpeechEnd = () => {
+      console.log('[STT] onSpeechEnd');
+      this.listening = false;
+    };
+
+    console.log('[STT] Initialized native Voice STT');
   }
 
-  async startListening(): Promise<void> {
+  async isOnDeviceAvailable(): Promise<boolean> {
+    try {
+      return await Voice.isOnDeviceRecognitionAvailable();
+    } catch {
+      return false;
+    }
+  }
+
+  async triggerOnDeviceModelDownload(): Promise<boolean> {
+    try {
+      return await Voice.triggerModelDownload();
+    } catch (e) {
+      console.warn('[STT] triggerModelDownload failed:', e);
+      return false;
+    }
+  }
+
+  async startListening(useOnDevice = false): Promise<void> {
     if (this.listening) {
       console.log('[STT] Already listening, skipping');
       return;
     }
-
-    console.log('[STT] startListening');
-
+    this.listening = true;
+    this.resultDispatched = false;
+    const opts = useOnDevice
+      ? { RECOGNIZER_ENGINE: 'ON_DEVICE', EXTRA_PREFER_OFFLINE: true }
+      : {};
+    const locale = useOnDevice ? getDeviceLocale() : 'en-US';
+    console.log('[STT] startListening', { useOnDevice, locale });
     try {
-      if (!this.vosk || !this.modelLoaded) {
-        console.log('[STT] Loading Vosk model', { path: this.modelPath });
-        this.vosk = new Vosk();
-        await this.vosk.loadModel(this.modelPath);
-        this.modelLoaded = true;
-        console.log('[STT] Vosk model loaded');
-      }
-
-      this.removeListeners();
-
-      // Start recording first, then attach listeners (per react-native-vosk contract)
-      await this.vosk.start({});
-      this.listening = true;
-      console.log('[STT] Vosk listening started');
-
-      // onPartialResult = live partials while speaking {"partial":"..."}
-      this.resultListener = this.vosk.onPartialResult((result: string) => {
-        try {
-          const partial = (JSON.parse(result).partial ?? '').trim();
-          if (partial) console.log('[STT] Vosk partial:', partial);
-        } catch { /* ignore malformed */ }
-      });
-
-      // onResult = end-of-utterance (VAD silence detected), has {"text":"..."}
-      // onFinalResult = fires when stop() is called explicitly, also has {"text":"..."}
-      const handleFinalText = (result: string, source: string) => {
-        console.log(`[STT] Vosk ${source} raw:`, result);
-        this.listening = false;
-        this.removeListeners();
-
-        try {
-          const text = this.extractText(result);
-          if (text) {
-            console.log('[STT] Vosk dispatching result:', { text });
-            if (this.onResultCb) {
-              Promise.resolve(this.onResultCb(text)).catch(e =>
-                console.error('[STT] Result callback failed', e),
-              );
-            }
-          } else {
-            console.log('[STT] Vosk empty result — no speech detected');
-            this.onErrorCb?.({
-              kind: 'no_match',
-              message: 'No speech detected',
-              sawFinalResult: false,
-            });
-          }
-        } catch (e) {
-          console.error('[STT] Failed to parse Vosk result', e);
-          this.onErrorCb?.({
-            kind: 'unknown',
-            message: 'Failed to parse Vosk result',
-            sawFinalResult: false,
-          });
-        } finally {
-          try {
-            this.vosk?.stop();
-          } catch (e) {
-            console.warn('[STT] Vosk stop after result failed', e);
-          }
-        }
-      };
-
-      this.finalResultListener = this.vosk.onResult((result: string) =>
-        handleFinalText(result, 'onResult'),
-      );
-
-      this.errorListener = this.vosk.onError((error: string) => {
-        console.error('[STT] Vosk native error:', error);
-        this.listening = false;
-        this.removeListeners();
-        this.onErrorCb?.({
-          kind: 'unavailable',
-          message: error ?? 'Vosk native error',
-          sawFinalResult: false,
-        });
-      });
-
+      await Voice.start(locale, opts);
     } catch (error) {
       this.listening = false;
-      console.error('[STT] Failed to start Vosk', error);
-      this.onErrorCb?.({
-        kind: 'unavailable',
-        message: error instanceof Error ? error.message : 'Failed to start Vosk STT',
-        sawFinalResult: false,
-      });
+      console.error('[STT] Voice.start() failed:', error);
+      // Cancel any stuck session and retry once
+      try {
+        await Voice.cancel();
+        await new Promise(resolve => setTimeout(resolve, 100));
+        await Voice.start(locale, opts);
+        this.listening = true;
+      } catch (retryError) {
+        console.error('[STT] Voice.start() retry failed:', retryError);
+        this.onErrorCb?.({
+          kind: 'client_error',
+          message: retryError instanceof Error ? retryError.message : 'Failed to start STT',
+          sawFinalResult: false,
+        });
+      }
     }
   }
 
   async stopListening(): Promise<void> {
     console.log('[STT] stopListening');
     this.listening = false;
-    this.removeListeners();
     try {
-      this.vosk?.stop();
+      await Voice.stop();
     } catch (e) {
-      console.warn('[STT] Vosk stop failed', e);
+      console.warn('[STT] Voice.stop() failed:', e);
     }
   }
 
   async destroy(): Promise<void> {
     console.log('[STT] destroy');
     this.listening = false;
-    this.removeListeners();
     try {
-      this.vosk?.stop();
-    } catch { /* ignore */ }
-    this.vosk = null;
-    this.modelLoaded = false;
+      await Voice.destroy();
+      Voice.removeAllListeners();
+    } catch (e) {
+      console.warn('[STT] Voice.destroy() failed:', e);
+    }
+    this.onResultCb = null;
+    this.onErrorCb = null;
   }
 
   isListeningActive(): boolean {
     return this.listening;
-  }
-
-  private removeListeners(): void {
-    this.resultListener?.remove();
-    this.finalResultListener?.remove();
-    this.errorListener?.remove();
-    this.resultListener = null;
-    this.finalResultListener = null;
-    this.errorListener = null;
-  }
-
-  private extractText(result: string): string {
-    const trimmed = result.trim();
-    if (!trimmed) return '';
-
-    if (!trimmed.startsWith('{')) {
-      return trimmed;
-    }
-
-    return (JSON.parse(trimmed).text ?? '').trim();
   }
 }

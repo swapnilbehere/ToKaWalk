@@ -1,1 +1,16 @@
-export default { start: jest.fn(), stop: jest.fn(), destroy: jest.fn(), onSpeechResults: jest.fn() };
+export default {
+  start: jest.fn(() => Promise.resolve()),
+  stop: jest.fn(() => Promise.resolve()),
+  cancel: jest.fn(() => Promise.resolve()),
+  destroy: jest.fn(() => Promise.resolve()),
+  removeAllListeners: jest.fn(),
+  isAvailable: jest.fn(() => Promise.resolve(true)),
+  isRecognizing: jest.fn(() => Promise.resolve(false)),
+  onSpeechStart: null,
+  onSpeechEnd: null,
+  onSpeechResults: null,
+  onSpeechPartialResults: null,
+  onSpeechError: null,
+  onSpeechRecognized: null,
+  onSpeechVolumeChanged: null,
+};

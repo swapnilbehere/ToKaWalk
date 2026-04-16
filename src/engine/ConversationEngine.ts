@@ -7,7 +7,9 @@ import { SessionRepository } from '../services/storage/SessionRepository';
 import { TurnRepository } from '../services/storage/TurnRepository';
 import { SummaryRepository } from '../services/storage/SummaryRepository';
 
-const BYE_TOKA_PATTERNS = [/^bye\s+toka$/i, /^goodbye\s+toka$/i, /^bye-?bye\s+toka$/i];
+// "by/buy" are common STT mishearings of "bye".
+const BYE_WORD = /^(bye|by|buy|goodbye|bye-?bye)$/i;
+const NOVA_WORD = /nova/i;
 const SUMMARY_TIMEOUT_MS = 30_000;
 const STT_RESTART_DELAY_MS = 1_500;
 const MAX_CONSECUTIVE_STT_ERRORS = 3;
@@ -17,6 +19,23 @@ const PARTIAL_NO_FINAL_RESTART_DELAY_MS = 1_200;
 const CLIENT_ERROR_RESTART_DELAY_MS = 2_200;
 const UNAVAILABLE_RESTART_DELAY_MS = 3_000;
 const NO_MATCH_MAX_ERRORS = 3;
+const MAX_LLM_RETRIES = 2;
+const LLM_RETRY_DELAY_MS = 1_500;
+const LLM_RATE_LIMIT_DELAY_MS = 2_000;
+
+function classifyLLMError(error: unknown): { retryable: boolean; delayMs: number } {
+  const msg = error instanceof Error ? error.message : String(error);
+  // Auth / bad request — never retry, user must fix config
+  if (msg.includes('invalid_api_key') || msg.includes('invalid_request_error') || msg.includes('"401"') || msg.includes('401')) {
+    return { retryable: false, delayMs: 0 };
+  }
+  // Rate limit — retry after longer pause
+  if (msg.includes('rate_limit') || msg.includes('429')) {
+    return { retryable: true, delayMs: LLM_RATE_LIMIT_DELAY_MS };
+  }
+  // Network / timeout / server error — retry
+  return { retryable: true, delayMs: LLM_RETRY_DELAY_MS };
+}
 
 interface EngineServices {
   stt: STTService;
@@ -35,6 +54,7 @@ export interface EngineResponse {
 
 export class ConversationEngine {
   state: ConversationState = 'idle';
+  sttMode: 'online' | 'offline' = 'online';
   private context: ContextManager | null = null;
   private sessionId: number | null = null;
   private sessionMode: SessionMode = 'just-walk';
@@ -43,6 +63,7 @@ export class ConversationEngine {
   private pendingModeSwitch: LLMMode | null = null;
   private onStateChange: ((state: ConversationState) => void) | null = null;
   private onStatusDetailChange: ((detail: string | null) => void) | null = null;
+  private onSttModeChange: ((mode: 'online' | 'offline') => void) | null = null;
   private sessionActive = false;
   private sttRestartTimer: ReturnType<typeof setTimeout> | null = null;
   private consecutiveSttErrors = 0;
@@ -58,6 +79,10 @@ export class ConversationEngine {
     this.onStatusDetailChange = cb;
   }
 
+  setOnSttModeChange(cb: (mode: 'online' | 'offline') => void): void {
+    this.onSttModeChange = cb;
+  }
+
   async startIdle(): Promise<void> {
     console.log('[Engine] Entering idle state');
     this.setStatusDetail(null);
@@ -69,6 +94,8 @@ export class ConversationEngine {
     this.llmMode = llmMode;
     this.inputMode = inputMode;
     this.sessionActive = true;
+    this.sttMode = 'online';
+    this.onSttModeChange?.('online');
     this.setStatusDetail(null);
     this.context = new ContextManager(mode);
     this.generationToken += 1;
@@ -155,17 +182,39 @@ export class ConversationEngine {
     }
   }
 
-  isByeToka(text: string): boolean {
+  isByeNova(text: string): boolean {
     const trimmed = text.trim();
-    return BYE_TOKA_PATTERNS.some(p => p.test(trimmed));
+    const words = trimmed.split(/\s+/);
+
+    // Utterance containing a bye word + "nova", up to 6 words
+    // (covers natural closings like "all good thanks bye nova")
+    if (words.length <= 6) {
+      const hasBye = words.some(w => BYE_WORD.test(w));
+      const hasNova = words.some(w => NOVA_WORD.test(w));
+      if (hasBye && hasNova) return true;
+    }
+
+    return false;
+  }
+
+  private async switchToOfflineSTT(): Promise<void> {
+    const available = await this.services.stt.isOnDeviceAvailable();
+    if (available) {
+      this.sttMode = 'offline';
+      this.onSttModeChange?.('offline');
+      console.log('[Engine] Switched to offline STT');
+      this.setStatusDetail('Offline mode — accuracy may vary');
+    } else {
+      console.warn('[Engine] On-device STT not available on this device');
+    }
   }
 
   private startListening(): void {
     if (!this.sessionActive) return;
     this.clearSTTRestartTimer();
-    console.log('[Engine] Starting STT listening', { sessionId: this.sessionId });
+    console.log('[Engine] Starting STT listening', { sessionId: this.sessionId, sttMode: this.sttMode });
     this.setState('listening');
-    this.services.stt.startListening().catch(() => {});
+    this.services.stt.startListening(this.sttMode === 'offline').catch(() => {});
   }
 
   private async onUserSpeech(text: string): Promise<EngineResponse> {
@@ -180,7 +229,7 @@ export class ConversationEngine {
     this.consecutiveSttErrors = 0;
     this.clearSTTRestartTimer();
     await this.services.stt.stopListening();
-    if (this.isByeToka(text)) {
+    if (this.isByeNova(text)) {
       await this.endSession();
       return { text: '', status: 'completed' };
     }
@@ -207,9 +256,9 @@ export class ConversationEngine {
 
     this.setState('processing');
     const messages = activeContext.getMessages();
+    const llm = this.getActiveLLM();
     let fullResponse = '';
     let interrupted = false;
-    const llm = this.getActiveLLM();
     let tokenCount = 0;
 
     console.log('[Engine] Starting response generation', {
@@ -219,31 +268,74 @@ export class ConversationEngine {
       messageCount: messages.length,
     });
 
-    try {
-      for await (const token of llm.generate(messages)) {
-        fullResponse += token;
-        tokenCount += 1;
-        if (this.inputMode === 'voice') this.services.tts.feedToken(token);
+    for (let attempt = 0; attempt <= MAX_LLM_RETRIES; attempt++) {
+      fullResponse = '';
+      interrupted = false;
+      tokenCount = 0;
+      let generationError: unknown = null;
+
+      try {
+        for await (const token of llm.generate(messages)) {
+          fullResponse += token;
+          tokenCount += 1;
+          if (this.inputMode === 'voice') this.services.tts.feedToken(token);
+          if (!this.isGenerationCurrent(generationToken, activeSessionId, activeContext)) {
+            console.log('[Engine] Discarding stale generation during stream', {
+              sessionId: activeSessionId,
+            });
+            return { text: '', status: 'interrupted' };
+          }
+          if (this.state === 'listening') {
+            interrupted = true;
+            break;
+          }
+          if (this.inputMode === 'voice' && this.state !== 'speaking') this.setState('speaking');
+        }
+        if (this.inputMode === 'voice') {
+          this.services.tts.flush();
+          await this.services.tts.waitForIdle();
+          await new Promise(resolve => setTimeout(resolve, TTS_TAIL_DELAY_MS));
+        }
+      } catch (error) {
+        generationError = error;
+      }
+
+      if (!generationError) break; // success — exit retry loop
+
+      const { retryable, delayMs } = classifyLLMError(generationError);
+      const hasPartialTokens = fullResponse !== '';
+      const isLastAttempt = attempt >= MAX_LLM_RETRIES;
+
+      if (retryable && !hasPartialTokens && !isLastAttempt && this.isGenerationCurrent(generationToken, activeSessionId, activeContext)) {
+        console.warn('[Engine] LLM generation failed, retrying', {
+          sessionId: activeSessionId,
+          attempt: attempt + 1,
+          maxRetries: MAX_LLM_RETRIES,
+          error: generationError,
+        });
+        this.setStatusDetail(`Retrying… (${attempt + 1}/${MAX_LLM_RETRIES})`);
+        await new Promise(r => setTimeout(r, delayMs));
         if (!this.isGenerationCurrent(generationToken, activeSessionId, activeContext)) {
-          console.log('[Engine] Discarding stale generation during stream', {
-            sessionId: activeSessionId,
-          });
           return { text: '', status: 'interrupted' };
         }
-        if (this.state === 'listening') {
-          interrupted = true;
-          break;
+        continue;
+      }
+
+      // All retries exhausted or non-retryable error
+      console.error('[Engine] LLM generation failed:', generationError);
+      if (this.inputMode === 'voice') this.services.tts.stop();
+      if (this.isGenerationCurrent(generationToken, activeSessionId, activeContext)) {
+        this.setStatusDetail("Couldn't get a response. Try again.");
+        if (this.inputMode === 'voice') {
+          this.sttRestartTimer = setTimeout(() => {
+            this.sttRestartTimer = null;
+            if (this.sessionActive) this.startListening();
+          }, STT_RESTART_DELAY_MS);
+        } else {
+          this.setState('idle');
         }
-        if (this.inputMode === 'voice' && this.state !== 'speaking') this.setState('speaking');
       }
-      if (this.inputMode === 'voice') {
-        this.services.tts.flush();
-        await this.services.tts.waitForIdle();
-        await new Promise(resolve => setTimeout(resolve, TTS_TAIL_DELAY_MS));
-      }
-    } catch (error) {
-      console.error('[Engine] LLM generation failed:', error);
-      throw error;
+      return { text: '', status: 'interrupted' };
     }
 
     if (!this.isGenerationCurrent(generationToken, activeSessionId, activeContext)) {
@@ -281,7 +373,11 @@ export class ConversationEngine {
       this.pendingModeSwitch = null;
     }
 
-    if (!interrupted && this.inputMode === 'voice') this.startListening();
+    if (this.inputMode === 'voice') {
+      if (!interrupted) this.startListening();
+    } else {
+      this.setState('idle');
+    }
     return {
       text: fullResponse,
       status: interrupted ? 'interrupted' : 'completed',
@@ -291,10 +387,8 @@ export class ConversationEngine {
   private onSTTError(error: STTErrorInfo): void {
     const isActiveListeningError = this.sessionActive && this.state === 'listening';
     const isSoftNoMatch =
-      error.kind === 'no_match' &&
-      error.code === '11' &&
-      !error.partialText &&
-      !error.sawFinalResult;
+      error.kind === 'speech_timeout' ||
+      (error.kind === 'no_match' && !error.partialText && !error.sawFinalResult);
     console.warn('[Engine] STT error', {
       sessionId: this.sessionId,
       state: this.state,
@@ -316,6 +410,18 @@ export class ConversationEngine {
     const policy = this.getSTTRetryPolicy(error);
     this.setStatusDetail(this.describeSTTError(error));
     if (!policy.retry || this.consecutiveSttErrors >= policy.maxErrors) {
+      // On connectivity-related errors, try switching to offline STT before degrading
+      if ((error.kind === 'network_error' || error.kind === 'unavailable') && this.sttMode === 'online') {
+        this.switchToOfflineSTT().then(() => {
+          this.consecutiveSttErrors = 0;
+          this.setState('recovering');
+          this.sttRestartTimer = setTimeout(() => {
+            this.sttRestartTimer = null;
+            if (this.sessionActive) this.startListening();
+          }, 500);
+        });
+        return;
+      }
       this.enterDegradedState(error);
       return;
     }
@@ -351,7 +457,7 @@ export class ConversationEngine {
   private async generateSummaryWithTimeout(sessionId: number): Promise<void> {
     const turns = await this.services.turnRepo.getForSession(sessionId);
     const transcript = turns
-      .map(t => `${t.speaker === 'user' ? 'User' : 'Toka'}: ${t.text}`)
+      .map(t => `${t.speaker === 'user' ? 'User' : 'Nova'}: ${t.text}`)
       .join('\n');
 
     const summaryMessages = [
@@ -425,10 +531,13 @@ export class ConversationEngine {
     maxErrors: number;
   } {
     switch (error.kind) {
+      case 'speech_timeout':
+        // Normal silence during a walk — restart immediately, never degrade
+        return { retry: true, delayMs: 300, maxErrors: Infinity };
       case 'no_match':
         return {
           retry: true,
-          delayMs: error.code === '11' ? 600 : NO_MATCH_RESTART_DELAY_MS,
+          delayMs: NO_MATCH_RESTART_DELAY_MS,
           maxErrors: NO_MATCH_MAX_ERRORS,
         };
       case 'partial_no_final':
@@ -444,11 +553,18 @@ export class ConversationEngine {
           maxErrors: MAX_CONSECUTIVE_STT_ERRORS,
         };
       case 'network_error':
+        // maxErrors: 2 — allows one transient disconnect (e.g. audio focus race
+        // after TTS on Samsung) to retry before entering degraded state.
+        return {
+          retry: true,
+          delayMs: UNAVAILABLE_RESTART_DELAY_MS,
+          maxErrors: 2,
+        };
       case 'unavailable':
         return {
           retry: true,
           delayMs: UNAVAILABLE_RESTART_DELAY_MS,
-          maxErrors: 1,
+          maxErrors: 2,
         };
       case 'unknown':
       default:
@@ -462,10 +578,10 @@ export class ConversationEngine {
 
   private describeSTTError(error: STTErrorInfo): string {
     switch (error.kind) {
+      case 'speech_timeout':
+        return 'Listening...';
       case 'no_match':
-        return error.code === '11'
-          ? 'Listening again.'
-          : 'Did not catch that. Listening again.';
+        return 'Did not catch that. Listening again.';
       case 'partial_no_final':
         return 'Heard part of that. Trying again.';
       case 'client_error':

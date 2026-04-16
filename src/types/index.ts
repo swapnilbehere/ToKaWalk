@@ -18,6 +18,7 @@ export type STTErrorKind =
   | 'client_error'
   | 'network_error'
   | 'unavailable'
+  | 'speech_timeout'
   | 'unknown';
 
 export interface STTErrorInfo {

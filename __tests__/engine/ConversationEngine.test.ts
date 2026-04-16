@@ -25,7 +25,7 @@ describe('ConversationEngine', () => {
     expect(engine.state).toBe('idle');
   });
 
-  it('detects "bye toka" phrase and triggers session end', () => {
+  it('detects "bye nova" phrase and triggers session end', () => {
     const engine = new ConversationEngine({
       stt: mockSTT as any,
       tts: mockTTS as any,
@@ -35,9 +35,13 @@ describe('ConversationEngine', () => {
       turnRepo: mockTurnRepo as any,
       summaryRepo: mockSummaryRepo as any,
     });
-    expect(engine.isByeToka('bye toka')).toBe(true);
-    expect(engine.isByeToka('goodbye Toka')).toBe(true);
-    expect(engine.isByeToka('bye')).toBe(false);
-    expect(engine.isByeToka('I said bye toka and then something else')).toBe(false);
+    expect(engine.isByeNova('bye nova')).toBe(true);
+    expect(engine.isByeNova('goodbye Nova')).toBe(true);
+    expect(engine.isByeNova('all good thanks bye Nova')).toBe(true);
+    expect(engine.isByeNova('buy nova')).toBe(true);
+    expect(engine.isByeNova('by nova')).toBe(true);
+    expect(engine.isByeNova('bye')).toBe(false);
+    expect(engine.isByeNova('nova')).toBe(false);
+    expect(engine.isByeNova('I said bye nova and then something else')).toBe(false);
   });
 });

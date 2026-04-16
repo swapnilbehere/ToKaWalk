@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, FlatList, TouchableOpacity, Text, TextInput, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
-import { ChatBubble } from '../components/ChatBubble';
+import { ChatBubble, TypingIndicator } from '../components/ChatBubble';
 import { LLMModeBadge } from '../components/LLMModeBadge';
 import { useConversationEngine } from '../hooks/useConversationEngine';
 import { Turn } from '../types';
@@ -15,12 +15,13 @@ export function ChatModeScreen() {
   const route = useRoute<ChatModeRouteProp>();
   const navigation = useNavigation<any>();
   const { mode } = route.params;
-  const { llmMode, startSession, processTextInput, toggleLLMMode } = useConversationEngine();
+  const { state, llmMode, startSession, processTextInput, toggleLLMMode } = useConversationEngine();
   const [turns, setTurns] = useState<Turn[]>([]);
   const [elapsed, setElapsed] = useState(0);
   const [inputText, setInputText] = useState('');
   const listRef = useRef<FlatList>(null);
   const inputRef = useRef<TextInput>(null);
+  const navigatedAway = useRef(false);
 
   useEffect(() => {
     let mounted = true;
@@ -54,17 +55,34 @@ export function ChatModeScreen() {
         textLength: aiResponse.text.length,
         textPreview: aiResponse.text.slice(0, 120),
       });
-      if (aiResponse.text.trim()) {
-        const aiTurn: Turn = {
-          id: Date.now() + 1,
-          sessionId: 0,
-          speaker: 'ai',
-          text: aiResponse.text,
-          timestamp: Date.now(),
-          status: aiResponse.status,
-        };
-        setTurns(prev => [...prev, aiTurn]);
+      if (!aiResponse.text.trim()) {
+        if (aiResponse.status === 'completed') {
+          // bye-nova detected — session ended, go home
+          navigatedAway.current = true;
+          navigation.navigate('Home');
+        } else {
+          // LLM error — show inline error message
+          const errTurn: Turn = {
+            id: Date.now() + 1,
+            sessionId: 0,
+            speaker: 'ai',
+            text: "Couldn't get a response. Please try again.",
+            timestamp: Date.now(),
+            status: 'interrupted',
+          };
+          setTurns(prev => [...prev, errTurn]);
+        }
+        return;
       }
+      const aiTurn: Turn = {
+        id: Date.now() + 1,
+        sessionId: 0,
+        speaker: 'ai',
+        text: aiResponse.text,
+        timestamp: Date.now(),
+        status: aiResponse.status,
+      };
+      setTurns(prev => [...prev, aiTurn]);
     } catch (error) {
       console.error('[ChatMode] send failed:', error);
     }
@@ -76,7 +94,7 @@ export function ChatModeScreen() {
         <Text style={styles.modeLabel}>{MODE_LABELS[mode]} · {elapsedStr}</Text>
         <View style={styles.headerRight}>
           <LLMModeBadge mode={llmMode} onToggle={toggleLLMMode} />
-          <TouchableOpacity onPress={() => navigation.replace('WalkMode', { mode })}>
+          <TouchableOpacity onPress={() => { navigatedAway.current = true; navigation.replace('WalkMode', { mode }); }}>
             <Text style={styles.walkIcon}>🚶</Text>
           </TouchableOpacity>
         </View>
@@ -87,6 +105,8 @@ export function ChatModeScreen() {
         data={turns}
         keyExtractor={t => String(t.id)}
         renderItem={({ item }) => <ChatBubble turn={item} />}
+        ListFooterComponent={state === 'processing' ? <TypingIndicator /> : null}
+        onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
         contentContainerStyle={styles.list}
       />
 

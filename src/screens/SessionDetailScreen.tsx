@@ -57,7 +57,7 @@ export function SessionDetailScreen() {
         {turns.map(turn => (
           <View key={turn.id} style={styles.turnRow}>
             <Text style={[styles.turnSpeaker, turn.speaker === 'ai' && styles.turnSpeakerToka]}>
-              {turn.speaker === 'user' ? 'You' : 'Toka'}
+              {turn.speaker === 'user' ? 'You' : 'Nova'}
               {turn.status === 'interrupted' ? ' [interrupted]' : ''}:
             </Text>
             <Text style={styles.turnText}>{turn.text}</Text>
