@@ -38,7 +38,7 @@ ToKaWalk runs a full voice conversation pipeline on your phone:
 ### Setup
 
 ```bash
-git clone https://github.com/yourusername/ToKaWalk.git
+git clone https://github.com/swapnilbehere/ToKaWalk.git
 cd ToKaWalk
 npm install
 ```
