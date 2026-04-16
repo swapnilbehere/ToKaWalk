@@ -1,0 +1,12 @@
+// Substitute deprecated jcenter() with mavenCentral() for all subprojects.
+// Required for react-native-tts which still references jcenter in its build.gradle.
+allprojects {
+    buildscript {
+        repositories {
+            maven { url "https://jcenter.bintray.com" }
+        }
+    }
+    repositories {
+        maven { url "https://jcenter.bintray.com" }
+    }
+}
