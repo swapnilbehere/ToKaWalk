@@ -1,7 +1,9 @@
 {
   "name": "ToKaWalk",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "private": true,
+  "author": "Swapnil Behere <swapnilbehere10@gmail.com>",
+  "license": "MIT",
   "scripts": {
     "android": "react-native run-android",
     "ios": "react-native run-ios",
