@@ -1,8 +1,8 @@
 import { ConversationEngine } from '../../src/engine/ConversationEngine';
 
 // All services mocked
-const mockSTT = { init: jest.fn(), startListening: jest.fn(), stopListening: jest.fn(), destroy: jest.fn() };
-const mockTTS = { init: jest.fn(), feedToken: jest.fn(), flush: jest.fn(), stop: jest.fn() };
+const mockSTT = { init: jest.fn(), startListening: jest.fn(), stopListening: jest.fn(), destroy: jest.fn(() => Promise.resolve()), isListeningActive: jest.fn(() => false), isOnDeviceAvailable: jest.fn(() => Promise.resolve(false)) };
+const mockTTS = { init: jest.fn(), feedToken: jest.fn(), flush: jest.fn(), stop: jest.fn(), waitForIdle: jest.fn(() => Promise.resolve()) };
 const mockLLM = {
   isReady: jest.fn(() => true),
   generate: jest.fn(async function* () { yield 'Hello'; yield ' world'; }),
@@ -11,30 +11,26 @@ const mockSessionRepo = { create: jest.fn(() => 1), end: jest.fn(), list: jest.f
 const mockTurnRepo = { add: jest.fn(), getForSession: jest.fn(() => []) };
 const mockSummaryRepo = { save: jest.fn(), getForSession: jest.fn() };
 
+function makeEngine(overrides: Record<string, unknown> = {}) {
+  return new ConversationEngine({
+    stt: mockSTT as any,
+    tts: mockTTS as any,
+    localLLM: mockLLM as any,
+    onlineLLM: mockLLM as any,
+    sessionRepo: mockSessionRepo as any,
+    turnRepo: mockTurnRepo as any,
+    summaryRepo: mockSummaryRepo as any,
+    ...overrides,
+  });
+}
+
 describe('ConversationEngine', () => {
   it('starts in idle state', () => {
-    const engine = new ConversationEngine({
-      stt: mockSTT as any,
-      tts: mockTTS as any,
-      localLLM: mockLLM as any,
-      onlineLLM: mockLLM as any,
-      sessionRepo: mockSessionRepo as any,
-      turnRepo: mockTurnRepo as any,
-      summaryRepo: mockSummaryRepo as any,
-    });
-    expect(engine.state).toBe('idle');
+    expect(makeEngine().state).toBe('idle');
   });
 
   it('detects "bye nova" phrase and triggers session end', () => {
-    const engine = new ConversationEngine({
-      stt: mockSTT as any,
-      tts: mockTTS as any,
-      localLLM: mockLLM as any,
-      onlineLLM: mockLLM as any,
-      sessionRepo: mockSessionRepo as any,
-      turnRepo: mockTurnRepo as any,
-      summaryRepo: mockSummaryRepo as any,
-    });
+    const engine = makeEngine();
     expect(engine.isByeNova('bye nova')).toBe(true);
     expect(engine.isByeNova('goodbye Nova')).toBe(true);
     expect(engine.isByeNova('all good thanks bye Nova')).toBe(true);
@@ -43,5 +39,39 @@ describe('ConversationEngine', () => {
     expect(engine.isByeNova('bye')).toBe(false);
     expect(engine.isByeNova('nova')).toBe(false);
     expect(engine.isByeNova('I said bye nova and then something else')).toBe(false);
+  });
+
+  it('summary generation waits for localLLM.waitForIdle before saving', async () => {
+    jest.useFakeTimers();
+
+    let resolveIdle!: () => void;
+    const idleDone = new Promise<void>(r => { resolveIdle = r; });
+
+    const localLLM = {
+      isReady: jest.fn(() => true),
+      generate: jest.fn(async function* () { yield 'Summary.'; }),
+      waitForIdle: jest.fn(() => idleDone),
+    };
+
+    const summaryRepo = { save: jest.fn(() => Promise.resolve()), getForSession: jest.fn() };
+
+    const engine = makeEngine({ localLLM: localLLM as any, summaryRepo: summaryRepo as any });
+    await engine.startSession('just-walk', 'local', 'text');
+    // processTextInput adds a turn to context so endSession triggers summary.
+    await engine.processTextInput('hi');
+
+    await engine.endSession();
+
+    // Summary is fire-and-forget and currently blocked on waitForIdle.
+    expect(summaryRepo.save).not.toHaveBeenCalled();
+
+    // Unblock idle then flush the async summary chain:
+    // idleDone → race → turnRepo → gen.next ×2 → race → save. 15 ticks is generous.
+    resolveIdle();
+    for (let i = 0; i < 15; i++) await Promise.resolve();
+
+    expect(summaryRepo.save).toHaveBeenCalled();
+
+    jest.useRealTimers();
   });
 });

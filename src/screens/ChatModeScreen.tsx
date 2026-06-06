@@ -19,6 +19,7 @@ export function ChatModeScreen() {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [elapsed, setElapsed] = useState(0);
   const [inputText, setInputText] = useState('');
+  const [streamingTurnId, setStreamingTurnId] = useState<number | null>(null);
   const listRef = useRef<FlatList>(null);
   const inputRef = useRef<TextInput>(null);
   const navigatedAway = useRef(false);
@@ -45,23 +46,55 @@ export function ChatModeScreen() {
     const text = inputText.trim();
     if (!text) return;
     setInputText('');
+
     const userTurn: Turn = { id: Date.now(), sessionId: 0, speaker: 'user', text, timestamp: Date.now(), status: 'completed' };
     setTurns(prev => [...prev, userTurn]);
+
+    // Track the streaming bubble locally — avoids state reads inside the callback.
+    let localStreamId: number | null = null;
+    let accumulated = '';
+
     try {
       console.log('[ChatMode] sending text:', text);
-      const aiResponse = await processTextInput(text);
+      const aiResponse = await processTextInput(text, (token) => {
+        accumulated += token;
+        if (localStreamId === null) {
+          // First token: add the bubble and hide the typing indicator.
+          localStreamId = Date.now() + 1;
+          const sid = localStreamId;
+          setStreamingTurnId(sid);
+          setTurns(prev => [...prev, {
+            id: sid,
+            sessionId: 0,
+            speaker: 'ai',
+            text: accumulated,
+            timestamp: Date.now(),
+            status: 'completed',
+          }]);
+        } else {
+          const sid = localStreamId;
+          const snap = accumulated;
+          setTurns(prev => prev.map(t => t.id === sid ? { ...t, text: snap } : t));
+        }
+      });
+
+      setStreamingTurnId(null);
+
       console.log('[ChatMode] received response:', {
         status: aiResponse.status,
         textLength: aiResponse.text.length,
         textPreview: aiResponse.text.slice(0, 120),
       });
+
       if (!aiResponse.text.trim()) {
+        if (localStreamId !== null) {
+          const sid = localStreamId;
+          setTurns(prev => prev.filter(t => t.id !== sid));
+        }
         if (aiResponse.status === 'completed') {
-          // bye-nova detected — session ended, go home
           navigatedAway.current = true;
           navigation.navigate('Home');
         } else {
-          // LLM error — show inline error message
           const errTurn: Turn = {
             id: Date.now() + 1,
             sessionId: 0,
@@ -74,17 +107,29 @@ export function ChatModeScreen() {
         }
         return;
       }
-      const aiTurn: Turn = {
-        id: Date.now() + 1,
-        sessionId: 0,
-        speaker: 'ai',
-        text: aiResponse.text,
-        timestamp: Date.now(),
-        status: aiResponse.status,
-      };
-      setTurns(prev => [...prev, aiTurn]);
+
+      if (localStreamId !== null) {
+        // Streaming bubble already has the text — just stamp the final status.
+        const sid = localStreamId;
+        setTurns(prev => prev.map(t => t.id === sid ? { ...t, status: aiResponse.status } : t));
+      } else {
+        // No tokens were streamed (shouldn't happen); add turn directly.
+        setTurns(prev => [...prev, {
+          id: Date.now() + 1,
+          sessionId: 0,
+          speaker: 'ai',
+          text: aiResponse.text,
+          timestamp: Date.now(),
+          status: aiResponse.status,
+        }]);
+      }
     } catch (error) {
       console.error('[ChatMode] send failed:', error);
+      setStreamingTurnId(null);
+      if (localStreamId !== null) {
+        const sid = localStreamId;
+        setTurns(prev => prev.filter(t => t.id !== sid));
+      }
     }
   };
 
@@ -105,7 +150,7 @@ export function ChatModeScreen() {
         data={turns}
         keyExtractor={t => String(t.id)}
         renderItem={({ item }) => <ChatBubble turn={item} />}
-        ListFooterComponent={state === 'processing' ? <TypingIndicator /> : null}
+        ListFooterComponent={state === 'processing' && streamingTurnId === null ? <TypingIndicator /> : null}
         onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
         contentContainerStyle={styles.list}
       />

@@ -64,6 +64,7 @@ export class ConversationEngine {
   private onStateChange: ((state: ConversationState) => void) | null = null;
   private onStatusDetailChange: ((detail: string | null) => void) | null = null;
   private onSttModeChange: ((mode: 'online' | 'offline') => void) | null = null;
+  private textStreamCallback: ((token: string) => void) | null = null;
   private sessionActive = false;
   private sttRestartTimer: ReturnType<typeof setTimeout> | null = null;
   private consecutiveSttErrors = 0;
@@ -155,7 +156,7 @@ export class ConversationEngine {
     await this.startIdle();
   }
 
-  async processTextInput(text: string): Promise<EngineResponse> {
+  async processTextInput(text: string, onToken?: (token: string) => void): Promise<EngineResponse> {
     if (!this.sessionId || !this.context) {
       throw new Error('No active session');
     }
@@ -165,7 +166,12 @@ export class ConversationEngine {
       llmMode: this.llmMode,
       state: this.state,
     });
-    return this.onUserSpeech(text);
+    this.textStreamCallback = onToken ?? null;
+    try {
+      return await this.onUserSpeech(text);
+    } finally {
+      this.textStreamCallback = null;
+    }
   }
 
   toggleLLMMode(newMode: LLMMode): void {
@@ -279,6 +285,7 @@ export class ConversationEngine {
           fullResponse += token;
           tokenCount += 1;
           if (this.inputMode === 'voice') this.services.tts.feedToken(token);
+          else this.textStreamCallback?.(token);
           if (!this.isGenerationCurrent(generationToken, activeSessionId, activeContext)) {
             console.log('[Engine] Discarding stale generation during stream', {
               sessionId: activeSessionId,

@@ -22,7 +22,7 @@ interface ConversationEngineContextValue {
   startSession: (mode: SessionMode, inputMode?: InputMode) => void;
   endSession: () => void;
   toggleLLMMode: () => void;
-  processTextInput: (text: string) => Promise<EngineResponse>;
+  processTextInput: (text: string, onToken?: (token: string) => void) => Promise<EngineResponse>;
   updateGroqApiKey: (key: string) => void;
 }
 
@@ -118,11 +118,11 @@ export function ConversationEngineProvider({ children }: { children: React.React
     });
   }, [llmMode]);
 
-  const processTextInput = useCallback(async (text: string) => {
+  const processTextInput = useCallback(async (text: string, onToken?: (token: string) => void) => {
     if (!engineRef.current) {
       throw new Error('Conversation engine is not ready');
     }
-    return engineRef.current.processTextInput(text);
+    return engineRef.current.processTextInput(text, onToken);
   }, []);
 
   const updateGroqApiKey = useCallback((key: string) => {
