@@ -22,7 +22,14 @@ export class TTSService {
 
   async init(rate: number): Promise<void> {
     await Tts.getInitStatus();
-    await Tts.setDefaultRate(rate, false);
+    try {
+      // New Arch (RN 0.82+) cannot bridge JS boolean → Obj-C BOOL for legacy
+      // NativeModules, so this call throws on iOS. Non-fatal: TTS still works
+      // at default rate.
+      await Tts.setDefaultRate(rate, false);
+    } catch (e) {
+      console.warn('[TTS] setDefaultRate failed, using default rate:', e);
+    }
     this.attachListeners();
     this.ready = true;
   }
