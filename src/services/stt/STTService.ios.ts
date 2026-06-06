@@ -1,10 +1,33 @@
 import Voice, { SpeechResultsEvent, SpeechErrorEvent } from '@react-native-voice/voice';
 import { STTErrorInfo, STTErrorKind } from '../../types';
 
+// Supported locales for SFSpeechRecognizer — keep en-US as safe default.
+// Intl may return a region that SFSpeechRecognizer doesn't support on
+// a given OS version (e.g. en-IN on iPadOS 26 beta), so we normalise to
+// the base language with a known-good region.
+const IOS_LOCALE_MAP: Record<string, string> = {
+  en: 'en-US',
+  hi: 'hi-IN',
+  fr: 'fr-FR',
+  de: 'de-DE',
+  es: 'es-ES',
+  zh: 'zh-CN',
+  ja: 'ja-JP',
+  ko: 'ko-KR',
+  pt: 'pt-BR',
+  ar: 'ar-SA',
+};
+
 function getLocale(): string {
   try {
-    const locale = Intl.DateTimeFormat().resolvedOptions().locale;
-    if (locale) return locale;
+    const raw = Intl.DateTimeFormat().resolvedOptions().locale ?? '';
+    if (raw) {
+      const lang = raw.split('-')[0].toLowerCase();
+      const mapped = IOS_LOCALE_MAP[lang];
+      if (mapped) return mapped;
+      // Return the raw locale if not in the map — may still work
+      return raw;
+    }
   } catch {}
   return 'en-US';
 }

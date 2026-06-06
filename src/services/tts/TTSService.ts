@@ -22,7 +22,7 @@ export class TTSService {
 
   async init(rate: number): Promise<void> {
     await Tts.getInitStatus();
-    await Tts.setDefaultRate(rate);
+    await Tts.setDefaultRate(rate, false);
     this.attachListeners();
     this.ready = true;
   }
