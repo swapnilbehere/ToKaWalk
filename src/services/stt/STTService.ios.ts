@@ -118,6 +118,7 @@ export class STTService {
       try {
         await Voice.cancel();
         await new Promise(resolve => setTimeout(resolve, 100));
+        this.resultDispatched = false;
         await Voice.start(locale);
         this.listening = true;
       } catch (retryError) {
@@ -146,10 +147,10 @@ export class STTService {
     this.listening = false;
     try {
       await Voice.destroy();
-      Voice.removeAllListeners();
     } catch (e) {
       console.warn('[STT][iOS] Voice.destroy() failed:', e);
     }
+    Voice.removeAllListeners();
     this.onResultCb = null;
     this.onErrorCb = null;
   }
