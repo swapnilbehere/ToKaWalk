@@ -455,6 +455,16 @@ export class ConversationEngine {
   }
 
   private async generateSummaryWithTimeout(sessionId: number): Promise<void> {
+    // Wait for any in-progress local LLM completion to finish before starting
+    // summary generation — llama.rn rejects concurrent completion calls.
+    const llm = this.services.localLLM;
+    if (llm.waitForIdle) {
+      await Promise.race([
+        llm.waitForIdle(),
+        new Promise(r => setTimeout(r, 5_000)),
+      ]);
+    }
+
     const turns = await this.services.turnRepo.getForSession(sessionId);
     const transcript = turns
       .map(t => `${t.speaker === 'user' ? 'User' : 'Nova'}: ${t.text}`)

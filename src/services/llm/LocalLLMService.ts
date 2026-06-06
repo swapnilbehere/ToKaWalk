@@ -5,6 +5,8 @@ import { LLMMessage } from '../../types';
 export class LocalLLMService implements LLMService {
   private context: LlamaContext | null = null;
   private loadPromise: Promise<void> | null = null;
+  private completionDone: Promise<void> = Promise.resolve();
+  private completionResolve: (() => void) | null = null;
 
   constructor(private modelPath: string) {}
 
@@ -24,6 +26,11 @@ export class LocalLLMService implements LLMService {
     return this.context !== null;
   }
 
+  /** Resolves when any in-progress completion finishes. */
+  waitForIdle(): Promise<void> {
+    return this.completionDone;
+  }
+
   async *generate(messages: LLMMessage[]): AsyncGenerator<string> {
     if (!this.context) {
       await this.load();
@@ -35,6 +42,9 @@ export class LocalLLMService implements LLMService {
       lastRole: messages[messages.length - 1]?.role ?? null,
       lastContentPreview: messages[messages.length - 1]?.content?.slice(0, 80) ?? '',
     });
+
+    // Track that a completion is in-progress so callers can await idle.
+    this.completionDone = new Promise<void>(r => { this.completionResolve = r; });
 
     const tokens: string[] = [];
     let finished = false;
@@ -75,6 +85,9 @@ export class LocalLLMService implements LLMService {
         yield tokens.shift()!;
       }
     }
+
+    this.completionResolve?.();
+    this.completionResolve = null;
 
     if (completionError !== null) {
       throw completionError instanceof Error
