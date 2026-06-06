@@ -120,10 +120,9 @@ export class TTSService {
       this.onUtteranceComplete();
     });
 
-    Tts.addEventListener('tts-error', (event) => {
-      console.warn('[TTS] error', event);
-      this.onUtteranceComplete();
-    });
+    // 'tts-error' is not a supported event on iOS (react-native-tts v4);
+    // registering it crashes the TurboModule bridge. Errors surface via
+    // the rejected Promise from safeSpeak instead.
   }
 
   private onUtteranceComplete(): void {
