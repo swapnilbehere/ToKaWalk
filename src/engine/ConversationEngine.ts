@@ -487,13 +487,18 @@ export class ConversationEngine {
     ];
 
     try {
+      if (!llm.isReady()) {
+        await this.services.summaryRepo.save(sessionId, '');
+        return;
+      }
+
       const timeoutPromise = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error('timeout')), SUMMARY_TIMEOUT_MS),
       );
 
       let summary = '';
       const generationPromise = (async () => {
-        for await (const token of this.getActiveLLM().generate(summaryMessages)) {
+        for await (const token of llm.generate(summaryMessages)) {
           summary += token;
         }
         return summary;

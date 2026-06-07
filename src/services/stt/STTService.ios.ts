@@ -1,5 +1,5 @@
 import Voice, { SpeechResultsEvent, SpeechErrorEvent } from '@react-native-voice/voice';
-import { STTErrorInfo, STTErrorKind } from '../../types';
+import { STTErrorInfo, STTErrorKind, VADSensitivity } from '../../types';
 
 // Supported locales for SFSpeechRecognizer — keep en-US as safe default.
 // Intl may return a region that SFSpeechRecognizer doesn't support on
@@ -57,10 +57,11 @@ export class STTService {
   private onResultCb: ((text: string) => void | Promise<void>) | null = null;
   private onErrorCb: ((error: STTErrorInfo) => void) | null = null;
 
-  // Continuous-listening state: accumulate segments until CONTINUOUS_COMMIT_DELAY_MS
-  // of silence so iOS's ~1 s internal cutoff doesn't truncate mid-sentence.
+  // Continuous-listening state: accumulate segments until commitDelayMs of silence
+  // so iOS's ~1 s internal cutoff doesn't truncate mid-sentence.
   private accumulatedText = '';
   private commitTimer: ReturnType<typeof setTimeout> | null = null;
+  private commitDelayMs = 1200;
 
   init(callbacks: {
     onResult: (text: string) => void | Promise<void>;
@@ -98,7 +99,7 @@ export class STTService {
       this.commitTimer = setTimeout(() => {
         this.commitTimer = null;
         this.commitAccumulated();
-      }, CONTINUOUS_COMMIT_DELAY_MS);
+      }, this.commitDelayMs);
 
       // Restart immediately so we capture what the user says next.
       this.restartForContinuous();
@@ -214,6 +215,11 @@ export class STTService {
 
   isListeningActive(): boolean {
     return this.listening;
+  }
+
+  setVadSensitivity(mode: VADSensitivity): void {
+    this.commitDelayMs = mode === 'outdoor' ? 2000 : 1200;
+    console.log('[STT][iOS] VAD sensitivity set to', mode, '→', this.commitDelayMs, 'ms');
   }
 
   private commitAccumulated(): void {

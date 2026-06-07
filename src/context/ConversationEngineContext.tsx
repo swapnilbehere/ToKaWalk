@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { ConversationState, SessionMode, LLMMode, InputMode } from '../types';
+import { ConversationState, SessionMode, LLMMode, InputMode, VADSensitivity } from '../types';
 import { LLM_MODEL_PATH } from '../services/ModelManager';
 import { ConversationEngine } from '../engine/ConversationEngine';
 import { STTService } from '../services/stt/STTService';
@@ -25,6 +25,8 @@ interface ConversationEngineContextValue {
   toggleLLMMode: () => void;
   processTextInput: (text: string, onToken?: (token: string) => void) => Promise<EngineResponse>;
   updateGroqApiKey: (key: string) => void;
+  updateTtsRate: (rate: number) => void;
+  updateVadSensitivity: (mode: VADSensitivity) => void;
 }
 
 const ConversationEngineContext = createContext<ConversationEngineContextValue | null>(null);
@@ -32,6 +34,8 @@ const ConversationEngineContext = createContext<ConversationEngineContextValue |
 export function ConversationEngineProvider({ children }: { children: React.ReactNode }) {
   const engineRef = useRef<ConversationEngine | null>(null);
   const groqLLMRef = useRef<GroqLLMService | null>(null);
+  const ttsRef = useRef<TTSService | null>(null);
+  const sttServiceRef = useRef<STTService | null>(null);
   const prefsRepoRef = useRef<PreferencesRepository | null>(null);
   const llmModeRef = useRef<LLMMode>('local');
   const [state, setState] = useState<ConversationState>('idle');
@@ -60,8 +64,11 @@ export function ConversationEngineProvider({ children }: { children: React.React
         groqLLMRef.current = groqLLM;
         const tts = new TTSService();
         await tts.init(prefs.ttsRate);
+        ttsRef.current = tts;
 
         const sttService = new STTService();
+        sttService.setVadSensitivity(prefs.vadSensitivity);
+        sttServiceRef.current = sttService;
         const engine = new ConversationEngine({
           stt: sttService,
           tts,
@@ -139,8 +146,24 @@ export function ConversationEngineProvider({ children }: { children: React.React
     });
   }, []);
 
+  const updateTtsRate = useCallback((rate: number) => {
+    ttsRef.current?.setRate(rate).catch((error) => {
+      console.warn('[Engine] Failed to set TTS rate', error);
+    });
+    prefsRepoRef.current?.set('ttsRate', rate).catch((error) => {
+      console.warn('[Engine] Failed to persist ttsRate', error);
+    });
+  }, []);
+
+  const updateVadSensitivity = useCallback((mode: VADSensitivity) => {
+    sttServiceRef.current?.setVadSensitivity(mode);
+    prefsRepoRef.current?.set('vadSensitivity', mode).catch((error) => {
+      console.warn('[Engine] Failed to persist vadSensitivity', error);
+    });
+  }, []);
+
   return (
-    <ConversationEngineContext.Provider value={{ state, statusDetail, llmMode, sttMode, ready, startSession, endSession, toggleLLMMode, processTextInput, updateGroqApiKey }}>
+    <ConversationEngineContext.Provider value={{ state, statusDetail, llmMode, sttMode, ready, startSession, endSession, toggleLLMMode, processTextInput, updateGroqApiKey, updateTtsRate, updateVadSensitivity }}>
       {children}
     </ConversationEngineContext.Provider>
   );

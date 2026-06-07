@@ -3,10 +3,14 @@ import Tts from 'react-native-tts';
 // Exported for testing
 export function splitIntoSentences(text: string): string[] {
   if (!text.trim()) return [];
-  // Only split after punctuation that follows a lowercase letter.
-  // This prevents splitting on abbreviations like U.S. or Dr. where
-  // the letter before the period is uppercase.
-  const parts = text.split(/(?<=[a-z][.!?])\s+/);
+  // Split after punctuation that follows either:
+  //   [a-z][.!?]     — lowercase letter before punctuation (2 chars, fixed)
+  //   [A-Z]{2}[.!?]  — two consecutive uppercase letters before punctuation (3 chars, fixed)
+  // The second alternative handles proper nouns and acronyms ending sentences
+  // (e.g. "NASA. Next…" splits, but "U.S. is…" does not because only one
+  // uppercase letter precedes each period in that abbreviation).
+  // Both alternatives are fixed-length, satisfying Hermes's lookbehind constraint.
+  const parts = text.split(/(?<=[a-z][.!?]|[A-Z]{2}[.!?])\s+/);
   return parts.map(s => s.trim()).filter(Boolean);
 }
 
@@ -54,6 +58,14 @@ export class TTSService {
       this.safeSpeak(this.buffer.trim());
       this.buffer = '';
       this.tokenCount = 0;
+    }
+  }
+
+  async setRate(rate: number): Promise<void> {
+    try {
+      await Tts.setDefaultRate(rate, false);
+    } catch (e) {
+      console.warn('[TTS] setRate failed:', e);
     }
   }
 

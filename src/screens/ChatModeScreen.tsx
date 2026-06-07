@@ -15,7 +15,7 @@ export function ChatModeScreen() {
   const route = useRoute<ChatModeRouteProp>();
   const navigation = useNavigation<any>();
   const { mode } = route.params;
-  const { state, llmMode, startSession, processTextInput, toggleLLMMode } = useConversationEngine();
+  const { state, llmMode, ready, startSession, processTextInput, toggleLLMMode } = useConversationEngine();
   const [turns, setTurns] = useState<Turn[]>([]);
   const [elapsed, setElapsed] = useState(0);
   const [inputText, setInputText] = useState('');
@@ -25,6 +25,7 @@ export function ChatModeScreen() {
   const navigatedAway = useRef(false);
 
   useEffect(() => {
+    if (!ready) return;
     let mounted = true;
     console.log('[ChatMode] Mounting screen', { mode });
     if (mounted) startSession(mode, 'text');
@@ -34,11 +35,7 @@ export function ChatModeScreen() {
       console.log('[ChatMode] Unmounting screen');
       clearInterval(timer);
     };
-  }, [mode, startSession]);
-
-  useEffect(() => {
-    // Avoid imperative scroll churn while debugging Fabric crashes on async updates.
-  }, [turns]);
+  }, [ready, mode, startSession]);
 
   const elapsedStr = `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}`;
 

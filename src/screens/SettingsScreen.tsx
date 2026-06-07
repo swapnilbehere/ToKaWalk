@@ -10,7 +10,7 @@ import { useConversationEngine } from '../context/ConversationEngineContext';
 
 export function SettingsScreen() {
   const navigation = useNavigation();
-  const { updateGroqApiKey } = useConversationEngine();
+  const { updateGroqApiKey, updateTtsRate, updateVadSensitivity } = useConversationEngine();
   const [prefs, setPrefs] = useState<Omit<Preferences, 'groqApiKey'> | null>(null);
   const [apiKey, setApiKeyState] = useState('');
   const [repo, setRepo] = useState<PreferencesRepository | null>(null);
@@ -46,7 +46,7 @@ export function SettingsScreen() {
         <Text style={styles.label}>Outdoor mode (raises VAD threshold)</Text>
         <Switch
           value={prefs.vadSensitivity === 'outdoor'}
-          onValueChange={v => update('vadSensitivity', v ? 'outdoor' : 'indoor')}
+          onValueChange={v => { const mode = v ? 'outdoor' : 'indoor'; update('vadSensitivity', mode); updateVadSensitivity(mode); }}
           trackColor={{ true: colors.orange }}
         />
       </View>
@@ -54,7 +54,29 @@ export function SettingsScreen() {
       <Text style={styles.sectionLabel}>VOICE</Text>
       <View style={styles.row}>
         <Text style={styles.label}>TTS Speed</Text>
-        <Text style={styles.value}>{Math.round(prefs.ttsRate * 100)}%</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <TouchableOpacity
+            onPress={() => {
+              const newRate = Math.max(0.1, Math.round((prefs.ttsRate - 0.1) * 10) / 10);
+              update('ttsRate', newRate);
+              updateTtsRate(newRate);
+            }}
+            style={styles.rateBtn}
+          >
+            <Text style={styles.rateBtnText}>−</Text>
+          </TouchableOpacity>
+          <Text style={styles.value}>{Math.round(prefs.ttsRate * 100)}%</Text>
+          <TouchableOpacity
+            onPress={() => {
+              const newRate = Math.min(2.0, Math.round((prefs.ttsRate + 0.1) * 10) / 10);
+              update('ttsRate', newRate);
+              updateTtsRate(newRate);
+            }}
+            style={styles.rateBtn}
+          >
+            <Text style={styles.rateBtnText}>+</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <Text style={styles.sectionLabel}>DEFAULTS</Text>
@@ -101,4 +123,6 @@ const styles = StyleSheet.create({
   value: { color: colors.textFaint, fontSize: 13 },
   hint: { color: colors.textFaint, fontSize: 11, lineHeight: 18, marginBottom: 4 },
   apiInput: { flex: 1, color: colors.text, fontSize: 13, borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: 10 },
+  rateBtn: { width: 28, height: 28, borderRadius: 14, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
+  rateBtnText: { color: colors.textMuted, fontSize: 16, lineHeight: 20 },
 });

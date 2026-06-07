@@ -1,6 +1,6 @@
 import Voice, { SpeechResultsEvent, SpeechErrorEvent } from '@react-native-voice/voice';
 import { NativeModules, Platform } from 'react-native';
-import { STTErrorInfo, STTErrorKind } from '../../types';
+import { STTErrorInfo, STTErrorKind, VADSensitivity } from '../../types';
 
 function getDeviceLocale(): string {
   try {
@@ -49,6 +49,7 @@ export class STTService {
   private resultDispatched = false;
   private onResultCb: ((text: string) => void | Promise<void>) | null = null;
   private onErrorCb: ((error: STTErrorInfo) => void) | null = null;
+  private vadSensitivity: VADSensitivity = 'indoor';
 
   init(callbacks: {
     onResult: (text: string) => void | Promise<void>;
@@ -138,10 +139,14 @@ export class STTService {
     const opts = useOnDevice
       ? { RECOGNIZER_ENGINE: 'ON_DEVICE', EXTRA_PREFER_OFFLINE: true }
       : {};
+    const vadOpts = this.vadSensitivity === 'outdoor'
+      ? { EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS: 2500, EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS: 2500 }
+      : {};
+    const mergedOpts = { ...opts, ...vadOpts };
     const locale = useOnDevice ? getDeviceLocale() : 'en-US';
-    console.log('[STT] startListening', { useOnDevice, locale });
+    console.log('[STT] startListening', { useOnDevice, locale, vadSensitivity: this.vadSensitivity });
     try {
-      await Voice.start(locale, opts);
+      await Voice.start(locale, mergedOpts);
     } catch (error) {
       this.listening = false;
       console.error('[STT] Voice.start() failed:', error);
@@ -149,7 +154,7 @@ export class STTService {
       try {
         await Voice.cancel();
         await new Promise(resolve => setTimeout(resolve, 100));
-        await Voice.start(locale, opts);
+        await Voice.start(locale, mergedOpts);
         this.listening = true;
       } catch (retryError) {
         console.error('[STT] Voice.start() retry failed:', retryError);
@@ -187,5 +192,10 @@ export class STTService {
 
   isListeningActive(): boolean {
     return this.listening;
+  }
+
+  setVadSensitivity(mode: VADSensitivity): void {
+    this.vadSensitivity = mode;
+    console.log('[STT][Android] VAD sensitivity set to', mode);
   }
 }

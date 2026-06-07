@@ -23,19 +23,21 @@ export function WalkModeScreen() {
   const route = useRoute<WalkModeRouteProp>();
   const navigation = useNavigation<any>();
   const { mode } = route.params;
-  const { state, statusDetail, llmMode, sttMode, startSession, endSession, toggleLLMMode } = useConversationEngine();
+  const { state, statusDetail, llmMode, sttMode, ready, startSession, endSession, toggleLLMMode } = useConversationEngine();
   const [elapsed, setElapsed] = useState(0);
   const hasBeenActive = React.useRef(false);
   const navigatedAway = React.useRef(false);
 
   useEffect(() => {
+    if (!ready) return;
     startSession(mode, 'voice');
+    return () => endSession();
+  }, [ready, mode, startSession, endSession]);
+
+  useEffect(() => {
     const timer = setInterval(() => setElapsed(e => e + 1), 1000);
-    return () => {
-      clearInterval(timer);
-      endSession();
-    };
-  }, [mode, startSession, endSession]);
+    return () => clearInterval(timer);
+  }, []);
 
   // Track when session becomes active, then navigate home when it returns to idle
   // (only if the user didn't explicitly navigate away via Chat or End buttons)
