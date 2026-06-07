@@ -73,6 +73,92 @@ New private methods: `commitAccumulated()`, `clearCommitTimer()`, `restartForCon
 - iOS STT mid-sentence cutoff: root cause is SFSpeechRecognizer 1 s silence timeout. Fix lives in `STTService.ios.ts` continuous-listening logic, not in the engine.
 - Groq API key: now in Keychain only. Any future code touching it must go through `SecureStorage.getApiKey/setApiKey` — never SQLite.
 
+## 2026-06-07 03:00 - Test CI hardening + 5 MEDIUM-priority fixes
+
+### Goal
+Validate all previous fixes via automated testing, harden the CI pipeline, then address the top 5 MEDIUM-priority issues from the June 6 code review.
+
+### Major Changes
+
+#### 1. Test infrastructure (`__mocks__/keychain.ts`, `jest.config.js`)
+Added `react-native-keychain` Jest mock (in-memory store, `getGenericPassword` / `setGenericPassword` / `resetGenericPassword`) and wired it into `moduleNameMapper`. Without this, any test importing `ConversationEngineContext` would fail after the Keychain migration landed in the previous session.
+
+#### 2. CI pipeline (`.github/workflows/test.yml`)
+- Node version bumped 18 → 22 to match `engines: ">= 22.11.0"` in `package.json`.
+- `actions/checkout` and `actions/setup-node` bumped v4 → v5 (Node 20 runners deprecated June 16, 2026).
+- Removed stale `patches/react-native-vosk+0.2.2.patch` and `patches/react-native-zip-archive+5.0.6.patch` — packages were removed from `dependencies` but patches remained, causing `npm ci` to fail with `patch-package` errors.
+
+#### 3. `splitIntoSentences` regex (`src/services/tts/TTSService.ts`)
+**Problem:** Lookbehind `(?<=[a-z][.!?])` only matched when a lowercase letter preceded the punctuation. Sentences ending with all-caps words (e.g. "NASA.") were never split → TTS received a single long utterance.
+
+**Fix:** Added a second fixed-length alternative `[A-Z]{2}[.!?]` (exactly 3 chars — Hermes-compatible). New regex: `/(?<=[a-z][.!?]|[A-Z]{2}[.!?])\s+/`. "U.S." still doesn't split (only 1 uppercase before each period). 3 new test cases added.
+
+#### 4. `generateSummaryWithTimeout` always uses localLLM (`src/engine/ConversationEngine.ts`)
+**Problem:** Called `this.getActiveLLM()` which returns whichever LLM is active at run time. Since it fires fire-and-forget from `endSession()`, the user may have switched modes by the time it runs. Also burns Groq quota for background work.
+
+**Fix:** Changed to `llm.generate(summaryMessages)` (the `llm` variable already points to `this.services.localLLM`). Added early-exit guard: if `!llm.isReady()` save empty summary and return.
+
+#### 5. `vadSensitivity` applied to STT
+**Problem:** The outdoor/indoor preference was stored in SQLite and shown in Settings but never passed to the recogniser.
+
+**Fix (iOS — `STTService.ios.ts`):** Made `CONTINUOUS_COMMIT_DELAY_MS` a private `commitDelayMs` instance field. `setVadSensitivity('outdoor')` sets it to 2000 ms; `'indoor'` resets to 1200 ms — wider window before committing accumulated speech in noisy environments.
+
+**Fix (Android — `STTService.ts`):** Added `vadSensitivity` field. In `startListening`, merges `EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS: 2500` and `EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS: 2500` into `Voice.start` opts when `'outdoor'`.
+
+**Wiring (`ConversationEngineContext.tsx`):** `sttServiceRef` added. On init: `sttService.setVadSensitivity(prefs.vadSensitivity)`. New `updateVadSensitivity(mode)` callback calls `setVadSensitivity` + persists to SQLite. `SettingsScreen` outdoor toggle now calls `updateVadSensitivity` in addition to `update()`.
+
+#### 6. TTS rate live update
+**Problem:** TTS speed could be read from prefs but the Settings screen had no controls to change it, and any change would require an app restart.
+
+**Fix (`TTSService.ts`):** Added `async setRate(rate: number)` method (calls `Tts.setDefaultRate(rate, false)` in try/catch, same as `init`).
+
+**Fix (`SettingsScreen.tsx`):** TTS Speed row now has − / + `TouchableOpacity` buttons (step 0.1, clamped 0.1–2.0). Each press calls `update('ttsRate', newRate)` (SQLite) and `updateTtsRate(newRate)` (live apply).
+
+**Wiring (`ConversationEngineContext.tsx`):** `ttsRef` added. New `updateTtsRate(rate)` callback calls `ttsRef.current?.setRate(rate)` + persists to SQLite.
+
+#### 7. `ready` guard before `startSession` + dead `useEffect` removal
+**Problem:** Both screens called `startSession` immediately on mount, before the engine had finished initialising (`ready === false`).
+
+**Fix (`WalkModeScreen.tsx`):** Split the combined effect into two — one for the session (`ready` guard + deps) and one for the elapsed timer (empty deps, always runs). Added `ready` to destructure.
+
+**Fix (`ChatModeScreen.tsx`):** Same `ready` guard added; `ready` added to deps. Removed dead no-op `useEffect` (`// Avoid imperative scroll churn...` with empty body on `turns` change).
+
+### Files Affected
+| File | Change |
+|------|--------|
+| `__mocks__/keychain.ts` | **New** — in-memory Keychain mock for Jest |
+| `jest.config.js` | Added `react-native-keychain` → keychain mock |
+| `.github/workflows/test.yml` | Node 22, actions v5, runs clean |
+| `patches/react-native-vosk+*.patch` | **Deleted** — stale, package no longer installed |
+| `patches/react-native-zip-archive+*.patch` | **Deleted** — stale, package no longer installed |
+| `src/services/tts/TTSService.ts` | Fixed `splitIntoSentences` regex; added `setRate()` |
+| `__tests__/services/TTSService.test.ts` | 3 new test cases for uppercase sentence endings |
+| `src/engine/ConversationEngine.ts` | `generateSummaryWithTimeout` uses `localLLM` + isReady guard |
+| `src/services/stt/STTService.ios.ts` | `commitDelayMs` field; `setVadSensitivity()` |
+| `src/services/stt/STTService.ts` | `vadSensitivity` field; VAD opts in `startListening`; `setVadSensitivity()` |
+| `src/context/ConversationEngineContext.tsx` | `ttsRef`, `sttServiceRef`, `updateTtsRate`, `updateVadSensitivity` |
+| `src/screens/SettingsScreen.tsx` | TTS +/− buttons; VAD toggle wired to `updateVadSensitivity` |
+| `src/screens/WalkModeScreen.tsx` | `ready` guard; split useEffect |
+| `src/screens/ChatModeScreen.tsx` | `ready` guard; dead useEffect removed |
+
+### Decisions Made
+- `[A-Z]{2}[.!?]` chosen for the regex alternative (exactly 3 chars) — avoids variable-length lookbehind which Hermes may not support; handles acronyms (NASA, CEO) without splitting single-letter abbreviations (U.S.).
+- Summary generation always uses localLLM regardless of current mode — avoids Groq quota burn on background work; if model not loaded, empty summary saved rather than blocking.
+- VAD outdoor mode: iOS 2000 ms commit delay (vs 1200 indoor), Android 2500 ms silence extras — values chosen based on typical outdoor ambient noise that would cause sub-second false silences.
+- TTS rate step 0.1, clamped [0.1, 2.0] — matches typical speech-rate UX conventions.
+
+### Validation
+- `npx jest --no-coverage`: 9/9 suites, 33/33 tests (3 new TTS cases). All green locally.
+- GitHub Actions run `27082590829`: passed in ~27 s on ubuntu-latest, Node 22, actions v5.
+
+### Remaining Issues (MEDIUM, not yet addressed)
+- Unversioned DB migrations (`CREATE TABLE IF NOT EXISTS` only — no schema version tracking)
+- `generateSummaryWithTimeout` uses `this.llmMode` captured at session start for the `modelUsed` column — not the same as always-localLLM for generation (minor inconsistency)
+
+### Memory Worth Keeping
+- `vadSensitivity` is now live: iOS adjusts `commitDelayMs`, Android adjusts `Voice.start` extras. Both surfaces call `sttServiceRef.current?.setVadSensitivity(mode)` via context.
+- `updateTtsRate` / `updateVadSensitivity` follow the same pattern as `updateGroqApiKey`: ref-based callback in context, persist to SQLite, apply immediately to the service.
+
 ## YYYY-MM-DD HH:MM - Short Title
 - Goal:
 - Major Changes:
