@@ -31,8 +31,11 @@ export function WalkModeScreen() {
   useEffect(() => {
     startSession(mode, 'voice');
     const timer = setInterval(() => setElapsed(e => e + 1), 1000);
-    return () => clearInterval(timer);
-  }, [mode, startSession]);
+    return () => {
+      clearInterval(timer);
+      endSession();
+    };
+  }, [mode, startSession, endSession]);
 
   // Track when session becomes active, then navigate home when it returns to idle
   // (only if the user didn't explicitly navigate away via Chat or End buttons)

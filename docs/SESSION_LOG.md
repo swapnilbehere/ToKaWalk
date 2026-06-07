@@ -2,6 +2,77 @@
 
 Use this template for each meaningful work session:
 
+## 2026-06-06 18:00 - iOS voice cut-off fix + Groq key security
+
+### Goal
+Fix iOS voice mode cutting off mid-sentence; move Groq API key out of plaintext SQLite into the system Keychain.
+
+### Major Changes
+
+#### 1. Continuous listening (`src/services/stt/STTService.ios.ts`)
+**Problem:** iOS `SFSpeechRecognizer` fires `onSpeechResults` after ~1 s of silence — a natural pause mid-sentence triggers it and the fragment is dispatched immediately to the LLM.
+
+**Fix:** Continuous listening with accumulation.
+- `onSpeechResults` now appends the segment to `accumulatedText` and immediately restarts the recogniser (`restartForContinuous`, 80 ms cancel+restart cycle).
+- A 1200 ms commit timer starts. Every new segment resets it.
+- When 1200 ms pass without new speech → `commitAccumulated()` dispatches the full sentence.
+- If the restart throws an error and accumulated text exists → commit rather than lose it.
+- `stopListening()` / `destroy()` cancel the timer and clear accumulation for a clean slate.
+
+New private fields: `accumulatedText: string`, `commitTimer`.  
+New private methods: `commitAccumulated()`, `clearCommitTimer()`, `restartForContinuous()`.
+
+#### 2. Keychain-backed API key (`src/services/storage/SecureStorage.ts` — new file)
+**Problem:** `groqApiKey` was stored as plaintext in `tokawalk.db` via `INSERT OR REPLACE INTO preferences`. Readable from any unencrypted iTunes backup or jailbroken device.
+
+**Fix:** `react-native-keychain` (v10) added. New `SecureStorage` module with:
+- `getApiKey()` — reads from iOS Keychain / Android Keystore.
+- `setApiKey(key)` — writes (or deletes on empty string).
+- `migrateApiKeyFromSQLite(sqliteKey, clearFromDB)` — one-time migration: moves any existing plaintext key to Keychain then deletes the DB row.
+
+#### 3. `PreferencesRepository` (`src/services/storage/PreferencesRepository.ts`)
+- `groqApiKey` removed from all SQL reads/writes.
+- `get()` always returns `groqApiKey: ''` (type satisfied for backwards compat; real value comes from Keychain).
+- Added `clearLegacyApiKey()` to DELETE the plaintext row during migration.
+
+#### 4. `ConversationEngineContext` (`src/context/ConversationEngineContext.tsx`)
+- On startup: runs `migrateApiKeyFromSQLite` then `getApiKey()` to load the key.
+- `updateGroqApiKey()` now calls `setApiKey()` (Keychain) instead of `prefsRepo.set('groqApiKey', ...)`.
+
+#### 5. `SettingsScreen` (`src/screens/SettingsScreen.tsx`)
+- Loads API key independently from Keychain via `getApiKey()` (not from `prefs`).
+- Separate `apiKey` / `setApiKeyState` local state manages the input field.
+- `update()` generic type tightened to `Omit<Preferences, 'groqApiKey'>` to prevent accidental SQL writes of the key.
+
+### Files Affected
+| File | Change |
+|------|--------|
+| `src/services/stt/STTService.ios.ts` | Continuous listening accumulation logic |
+| `src/services/storage/SecureStorage.ts` | **New** — Keychain wrapper + migration helper |
+| `src/services/storage/PreferencesRepository.ts` | Removed groqApiKey from SQL; added clearLegacyApiKey |
+| `src/context/ConversationEngineContext.tsx` | Load key from Keychain; write via setApiKey |
+| `src/screens/SettingsScreen.tsx` | Reads key from Keychain; dedicated apiKey state |
+| `package.json` / `package-lock.json` | `react-native-keychain@10.0.0` added |
+| `ios/Podfile.lock` / `ios/*.pbxproj` | Pods updated for react-native-keychain |
+
+### Decisions Made
+- 1200 ms commit threshold chosen: matches typical between-sentence pause without adding perceptible response latency for short sentences.
+- Key stored under `service: 'com.tokawalk.apikey'`, `username: 'groq'` — distinct service name avoids collision with any future per-user credentials.
+- `groqApiKey: ''` kept in `Preferences` return type to avoid cascading type changes across callers.
+
+### Validation
+- `npx tsc --noEmit` — only 3 pre-existing errors (repeat_penalty type, two Voice API stubs); no new errors.
+- Pods install cleanly: 83 dependencies, 82 total pods.
+
+### Remaining Issues
+- Migration runs on every cold start until the SQLite row is gone; harmless (no-op after first run) but could be removed after a release cycle.
+- `react-native-keychain` not yet mocked in test suite — tests that touch `ConversationEngineContext` will need a mock added (`__mocks__/react-native-keychain.ts`).
+- 3 pre-existing TS errors unchanged.
+
+### Memory Worth Keeping
+- iOS STT mid-sentence cutoff: root cause is SFSpeechRecognizer 1 s silence timeout. Fix lives in `STTService.ios.ts` continuous-listening logic, not in the engine.
+- Groq API key: now in Keychain only. Any future code touching it must go through `SecureStorage.getApiKey/setApiKey` — never SQLite.
+
 ## YYYY-MM-DD HH:MM - Short Title
 - Goal:
 - Major Changes:

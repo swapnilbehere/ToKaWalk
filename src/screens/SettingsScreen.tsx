@@ -5,12 +5,14 @@ import { Preferences } from '../types';
 import { colors } from '../constants/colors';
 import { getDatabase } from '../services/storage/database';
 import { PreferencesRepository } from '../services/storage/PreferencesRepository';
+import { getApiKey } from '../services/storage/SecureStorage';
 import { useConversationEngine } from '../context/ConversationEngineContext';
 
 export function SettingsScreen() {
   const navigation = useNavigation();
   const { updateGroqApiKey } = useConversationEngine();
-  const [prefs, setPrefs] = useState<Preferences | null>(null);
+  const [prefs, setPrefs] = useState<Omit<Preferences, 'groqApiKey'> | null>(null);
+  const [apiKey, setApiKeyState] = useState('');
   const [repo, setRepo] = useState<PreferencesRepository | null>(null);
   const [apiKeyMasked, setApiKeyMasked] = useState(true);
 
@@ -19,11 +21,13 @@ export function SettingsScreen() {
       const db = getDatabase();
       const r = new PreferencesRepository(db);
       setRepo(r);
-      setPrefs(await r.get());
+      const [loadedPrefs, loadedKey] = await Promise.all([r.get(), getApiKey()]);
+      setPrefs(loadedPrefs);
+      setApiKeyState(loadedKey);
     })();
   }, []);
 
-  const update = async <K extends keyof Preferences>(key: K, value: Preferences[K]) => {
+  const update = async <K extends keyof Omit<Preferences, 'groqApiKey'>>(key: K, value: Omit<Preferences, 'groqApiKey'>[K]) => {
     if (!repo || !prefs) return;
     await repo.set(key, value);
     setPrefs({ ...prefs, [key]: value });
@@ -68,10 +72,10 @@ export function SettingsScreen() {
       <View style={styles.row}>
         <TextInput
           style={styles.apiInput}
-          value={apiKeyMasked && prefs.groqApiKey ? '••••••••••••••••' : prefs.groqApiKey}
+          value={apiKeyMasked && apiKey ? '••••••••••••••••' : apiKey}
           onFocus={() => setApiKeyMasked(false)}
           onBlur={() => setApiKeyMasked(true)}
-          onChangeText={v => { updateGroqApiKey(v); setPrefs({ ...prefs!, groqApiKey: v }); }}
+          onChangeText={v => { updateGroqApiKey(v); setApiKeyState(v); }}
           placeholder="gsk_..."
           placeholderTextColor={colors.textFaint}
           autoCapitalize="none"

@@ -11,6 +11,7 @@ import { TurnRepository } from '../services/storage/TurnRepository';
 import { SummaryRepository } from '../services/storage/SummaryRepository';
 import { PreferencesRepository } from '../services/storage/PreferencesRepository';
 import { getDatabase } from '../services/storage/database';
+import { getApiKey, migrateApiKeyFromSQLite, setApiKey } from '../services/storage/SecureStorage';
 import { EngineResponse } from '../engine/ConversationEngine';
 
 interface ConversationEngineContextValue {
@@ -48,14 +49,21 @@ export function ConversationEngineProvider({ children }: { children: React.React
         prefsRepoRef.current = prefsRepo;
         const prefs = await prefsRepo.get();
 
+        // Migrate any key previously stored in plaintext SQLite → Keychain (one-time).
+        const groqApiKey = await migrateApiKeyFromSQLite(
+          prefs.groqApiKey,
+          () => prefsRepo.clearLegacyApiKey(),
+        ) || await getApiKey();
+
         const localLLM = new LocalLLMService(LLM_MODEL_PATH);
-        const groqLLM = new GroqLLMService(prefs.groqApiKey);
+        const groqLLM = new GroqLLMService(groqApiKey);
         groqLLMRef.current = groqLLM;
         const tts = new TTSService();
         await tts.init(prefs.ttsRate);
 
+        const sttService = new STTService();
         const engine = new ConversationEngine({
-          stt: new STTService(),
+          stt: sttService,
           tts,
           localLLM,
           onlineLLM: groqLLM,
@@ -83,8 +91,7 @@ export function ConversationEngineProvider({ children }: { children: React.React
 
         // Trigger on-device STT model download silently in background (Android 13+).
         // No-op if already installed or on older OS versions.
-        const stt = new STTService();
-        stt.triggerOnDeviceModelDownload()
+        sttService.triggerOnDeviceModelDownload()
           .then(triggered => {
             if (triggered) console.log('[Engine] On-device STT model download triggered');
           })
@@ -127,8 +134,8 @@ export function ConversationEngineProvider({ children }: { children: React.React
 
   const updateGroqApiKey = useCallback((key: string) => {
     groqLLMRef.current?.setApiKey(key);
-    prefsRepoRef.current?.set('groqApiKey', key).catch((error) => {
-      console.warn('[Engine] Failed to persist groqApiKey', error);
+    setApiKey(key).catch((error) => {
+      console.warn('[Engine] Failed to persist groqApiKey to Keychain', error);
     });
   }, []);
 

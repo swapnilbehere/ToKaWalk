@@ -79,13 +79,11 @@ export class TTSService {
         console.warn('[TTS] speak failed:', error);
         this.pendingUtterances = Math.max(0, this.pendingUtterances - 1);
         this.resolveIdleWaiters();
-        this.ready = false;
       });
     } catch (error) {
       console.warn('[TTS] speak failed:', error);
       this.pendingUtterances = Math.max(0, this.pendingUtterances - 1);
       this.resolveIdleWaiters();
-      this.ready = false;
     }
   }
 
@@ -94,11 +92,9 @@ export class TTSService {
     try {
       Promise.resolve(Tts.stop()).catch((error) => {
         console.warn('[TTS] stop failed:', error);
-        this.ready = false;
       });
     } catch (error) {
       console.warn('[TTS] stop failed:', error);
-      this.ready = false;
     }
   }
 

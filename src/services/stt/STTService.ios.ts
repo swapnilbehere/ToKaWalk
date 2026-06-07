@@ -18,6 +18,12 @@ const IOS_LOCALE_MAP: Record<string, string> = {
   ar: 'ar-SA',
 };
 
+// How long to wait after the last speech segment before committing the
+// accumulated text.  SFSpeechRecognizer fires onSpeechResults after ~1 s of
+// silence; we restart immediately and wait this long before deciding the user
+// is truly done speaking.
+const CONTINUOUS_COMMIT_DELAY_MS = 1200;
+
 function getLocale(): string {
   try {
     const raw = Intl.DateTimeFormat().resolvedOptions().locale ?? '';
@@ -25,7 +31,6 @@ function getLocale(): string {
       const lang = raw.split('-')[0].toLowerCase();
       const mapped = IOS_LOCALE_MAP[lang];
       if (mapped) return mapped;
-      // Return the raw locale if not in the map — may still work
       return raw;
     }
   } catch {}
@@ -37,15 +42,12 @@ function getLocale(): string {
 // Map the numeric NSError code to our error kind.
 function mapIOSError(message: string): STTErrorKind {
   const numericCode = parseInt(message.split('/')[0] ?? '', 10);
-  // Network-related NSURLError codes
   if (numericCode === -1009 || numericCode === -1001 || numericCode === -1004) {
     return 'network_error';
   }
-  // Not authorized or unsupported locale
   if (numericCode === 1 || numericCode === 2) {
     return 'unavailable';
   }
-  // Default: treat as no_match (retried gracefully by the engine)
   return 'no_match';
 }
 
@@ -54,6 +56,11 @@ export class STTService {
   private resultDispatched = false;
   private onResultCb: ((text: string) => void | Promise<void>) | null = null;
   private onErrorCb: ((error: STTErrorInfo) => void) | null = null;
+
+  // Continuous-listening state: accumulate segments until CONTINUOUS_COMMIT_DELAY_MS
+  // of silence so iOS's ~1 s internal cutoff doesn't truncate mid-sentence.
+  private accumulatedText = '';
+  private commitTimer: ReturnType<typeof setTimeout> | null = null;
 
   init(callbacks: {
     onResult: (text: string) => void | Promise<void>;
@@ -64,22 +71,37 @@ export class STTService {
 
     Voice.onSpeechResults = (event: SpeechResultsEvent) => {
       this.listening = false;
-      this.resultDispatched = true;
       const text = (event.value?.[0] ?? '').trim();
-      console.log('[STT][iOS] onSpeechResults:', text);
-      if (text) {
-        if (this.onResultCb) {
-          Promise.resolve(this.onResultCb(text)).catch(e =>
-            console.error('[STT][iOS] Result callback failed', e),
-          );
+      console.log('[STT][iOS] onSpeechResults:', text, { accumulated: this.accumulatedText });
+
+      if (!text) {
+        // No new text in this segment — commit whatever was accumulated, or
+        // report no_match if there's nothing.
+        if (this.accumulatedText) {
+          this.commitAccumulated();
+        } else {
+          this.resultDispatched = true;
+          this.onErrorCb?.({
+            kind: 'no_match',
+            message: 'No speech detected',
+            sawFinalResult: true,
+          });
         }
-      } else {
-        this.onErrorCb?.({
-          kind: 'no_match',
-          message: 'No speech detected',
-          sawFinalResult: true,
-        });
+        return;
       }
+
+      // Append to accumulated text.
+      this.accumulatedText = this.accumulatedText ? `${this.accumulatedText} ${text}` : text;
+
+      // Reset the commit timer — we got new speech, wait longer.
+      this.clearCommitTimer();
+      this.commitTimer = setTimeout(() => {
+        this.commitTimer = null;
+        this.commitAccumulated();
+      }, CONTINUOUS_COMMIT_DELAY_MS);
+
+      // Restart immediately so we capture what the user says next.
+      this.restartForContinuous();
     };
 
     Voice.onSpeechPartialResults = (event: SpeechResultsEvent) => {
@@ -89,13 +111,22 @@ export class STTService {
 
     Voice.onSpeechError = (event: SpeechErrorEvent) => {
       this.listening = false;
-      // iOS always sends code="recognition_fail"; numeric error is in the message.
       const message = event.error?.message ?? '';
-      console.warn('[STT][iOS] onSpeechError:', { message });
+      console.warn('[STT][iOS] onSpeechError:', { message, accumulated: this.accumulatedText });
+
       if (this.resultDispatched) {
         console.log('[STT][iOS] Suppressing post-result error');
         return;
       }
+
+      // If we have accumulated text and the restart after a segment failed,
+      // commit what we have rather than losing it.
+      if (this.accumulatedText) {
+        console.log('[STT][iOS] Error during continuous restart — committing accumulated text');
+        this.commitAccumulated();
+        return;
+      }
+
       this.onErrorCb?.({
         kind: mapIOSError(message),
         message,
@@ -113,12 +144,10 @@ export class STTService {
   }
 
   // iOS v3.2.4 does not export isOnDeviceRecognitionAvailable.
-  // Offline STT is a follow-up (requires patching the native module).
   async isOnDeviceAvailable(): Promise<boolean> {
     return false;
   }
 
-  // No model to download on iOS — recognition models ship with the OS.
   async triggerOnDeviceModelDownload(): Promise<boolean> {
     return false;
   }
@@ -130,10 +159,11 @@ export class STTService {
     }
     this.listening = true;
     this.resultDispatched = false;
+    this.accumulatedText = '';
+    this.clearCommitTimer();
     const locale = getLocale();
     console.log('[STT][iOS] startListening', { locale });
     try {
-      // iOS startSpeech accepts only locale — options are ignored by the native module.
       await Voice.start(locale);
     } catch (error) {
       this.listening = false;
@@ -158,6 +188,8 @@ export class STTService {
   async stopListening(): Promise<void> {
     console.log('[STT][iOS] stopListening');
     this.listening = false;
+    this.clearCommitTimer();
+    this.accumulatedText = '';
     try {
       await Voice.stop();
     } catch (e) {
@@ -168,6 +200,8 @@ export class STTService {
   async destroy(): Promise<void> {
     console.log('[STT][iOS] destroy');
     this.listening = false;
+    this.clearCommitTimer();
+    this.accumulatedText = '';
     try {
       await Voice.destroy();
     } catch (e) {
@@ -180,5 +214,44 @@ export class STTService {
 
   isListeningActive(): boolean {
     return this.listening;
+  }
+
+  private commitAccumulated(): void {
+    const text = this.accumulatedText.trim();
+    this.accumulatedText = '';
+    this.clearCommitTimer();
+    if (!text) return;
+    this.resultDispatched = true;
+    console.log('[STT][iOS] Committing accumulated text:', text);
+    if (this.onResultCb) {
+      Promise.resolve(this.onResultCb(text)).catch(e =>
+        console.error('[STT][iOS] Result callback failed', e),
+      );
+    }
+  }
+
+  private clearCommitTimer(): void {
+    if (this.commitTimer) {
+      clearTimeout(this.commitTimer);
+      this.commitTimer = null;
+    }
+  }
+
+  // Restart recognition immediately after a segment ends so we can capture
+  // the rest of the sentence.  Errors here are handled in onSpeechError.
+  private async restartForContinuous(): Promise<void> {
+    const locale = getLocale();
+    console.log('[STT][iOS] Continuous restart', { locale });
+    try {
+      await Voice.cancel();
+      await new Promise(resolve => setTimeout(resolve, 80));
+      await Voice.start(locale);
+      this.listening = true;
+      // Keep resultDispatched = false so errors during this segment are not
+      // suppressed.
+    } catch (error) {
+      console.warn('[STT][iOS] Continuous restart failed:', error);
+      // onSpeechError will fire and handle the commit.
+    }
   }
 }

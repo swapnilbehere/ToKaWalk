@@ -43,6 +43,9 @@ export class LocalLLMService implements LLMService {
       lastContentPreview: messages[messages.length - 1]?.content?.slice(0, 80) ?? '',
     });
 
+    // Serialize concurrent calls — second caller waits here until first finishes.
+    await this.completionDone;
+
     // Track that a completion is in-progress so callers can await idle.
     this.completionDone = new Promise<void>(r => { this.completionResolve = r; });
 
@@ -77,17 +80,21 @@ export class LocalLLMService implements LLMService {
       resolve?.();
     });
 
-    while (!finished || tokens.length > 0) {
-      if (tokens.length === 0) {
-        await new Promise<void>(r => { resolve = r; });
+    try {
+      while (!finished || tokens.length > 0) {
+        if (tokens.length === 0) {
+          await new Promise<void>(r => { resolve = r; });
+        }
+        while (tokens.length > 0) {
+          yield tokens.shift()!;
+        }
       }
-      while (tokens.length > 0) {
-        yield tokens.shift()!;
-      }
+    } finally {
+      // Runs on normal exit, error, AND external generator close (engine break).
+      // Guarantees waitForIdle() always resolves — previously hung on early exit.
+      this.completionResolve?.();
+      this.completionResolve = null;
     }
-
-    this.completionResolve?.();
-    this.completionResolve = null;
 
     if (completionError !== null) {
       throw completionError instanceof Error

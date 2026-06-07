@@ -86,8 +86,10 @@ export class GroqLLMService implements LLMService {
     });
 
     eventSource.addEventListener('error', (event) => {
-      const message = 'message' in event ? event.message : 'Unknown Groq SSE error';
-      console.error('[Groq] SSE error', event);
+      const status = (event as any).status ?? (event as any).xhrStatus;
+      const base = 'message' in event && event.message ? event.message : 'Groq SSE error';
+      const message = status ? `${base} (status ${status})` : base;
+      console.error('[Groq] SSE error', { status, event });
       finish(new Error(message));
     });
 
