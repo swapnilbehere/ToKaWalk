@@ -23,5 +23,6 @@ module.exports = {
     '@react-navigation/native': '<rootDir>/__mocks__/reactNavigation.ts',
     '@react-navigation/stack': '<rootDir>/__mocks__/reactNavigation.ts',
     'react-native-sse': '<rootDir>/__mocks__/reactNativeSse.ts',
+    'react-native-keychain': '<rootDir>/__mocks__/keychain.ts',
   },
 };
