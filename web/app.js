@@ -1,7 +1,7 @@
 // Update this URL after Railway deployment; localhost fallback for local dev.
 const API_BASE = window.location.hostname === 'localhost'
   ? 'http://localhost:8000'
-  : 'https://tokawalk-api.up.railway.app';
+  : 'https://tokawalk-production.up.railway.app';
 
 // Persist session across page refreshes so history context is maintained.
 let sessionId = sessionStorage.getItem('session_id');
