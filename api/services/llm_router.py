@@ -57,12 +57,14 @@ class LLMRouter:
         decision: RoutingDecision,
         message: str,
         history: list[dict],
+        system_prompt: str | None = None,
     ) -> AsyncIterator[str]:
         # Both paths use Groq in Phase 1; on-device routing activates when
         # the mobile app sends requests directly. Local decisions get fewer tokens
         # to simulate the tighter budget of an on-device model.
         max_tokens = 128 if decision.model == "local" else 256
-        messages = [{"role": "system", "content": NOVA_SYSTEM}] + history + [
+        system = system_prompt or NOVA_SYSTEM
+        messages = [{"role": "system", "content": system}] + history + [
             {"role": "user", "content": message}
         ]
         response = await self.client.chat.completions.create(

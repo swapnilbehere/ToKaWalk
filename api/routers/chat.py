@@ -23,7 +23,7 @@ async def chat(req: ChatRequest):
         full_response = ""
         error_type = None
         try:
-            async for token in llm_router.stream(decision, req.message, req.history):
+            async for token in llm_router.stream(decision, req.message, req.history, req.system_prompt):
                 full_response += token
                 yield f"data: {token}\n\n"
         except Exception as exc:

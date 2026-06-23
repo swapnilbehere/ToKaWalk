@@ -8,6 +8,7 @@ class ChatRequest(BaseModel):
     session_id: str
     history: list[dict] = []
     network_latency_ms: float = 0.0
+    system_prompt: str | None = None  # forwarded from mobile app; overrides default Nova prompt
 
 
 class FeedbackRequest(BaseModel):

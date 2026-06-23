@@ -6,6 +6,7 @@ import { STTService } from '../services/stt/STTService';
 import { TTSService } from '../services/tts/TTSService';
 import { LocalLLMService } from '../services/llm/LocalLLMService';
 import { GroqLLMService } from '../services/llm/GroqLLMService';
+import { BackendLLMService } from '../services/llm/BackendLLMService';
 import { SessionRepository } from '../services/storage/SessionRepository';
 import { TurnRepository } from '../services/storage/TurnRepository';
 import { SummaryRepository } from '../services/storage/SummaryRepository';
@@ -34,6 +35,7 @@ const ConversationEngineContext = createContext<ConversationEngineContextValue |
 export function ConversationEngineProvider({ children }: { children: React.ReactNode }) {
   const engineRef = useRef<ConversationEngine | null>(null);
   const groqLLMRef = useRef<GroqLLMService | null>(null);
+  const backendLLMRef = useRef<BackendLLMService | null>(null);
   const ttsRef = useRef<TTSService | null>(null);
   const sttServiceRef = useRef<STTService | null>(null);
   const prefsRepoRef = useRef<PreferencesRepository | null>(null);
@@ -62,6 +64,8 @@ export function ConversationEngineProvider({ children }: { children: React.React
         const localLLM = new LocalLLMService(LLM_MODEL_PATH);
         const groqLLM = new GroqLLMService(groqApiKey);
         groqLLMRef.current = groqLLM;
+        const backendLLM = new BackendLLMService();
+        backendLLMRef.current = backendLLM;
         const tts = new TTSService();
         await tts.init(prefs.ttsRate);
         ttsRef.current = tts;
@@ -73,7 +77,7 @@ export function ConversationEngineProvider({ children }: { children: React.React
           stt: sttService,
           tts,
           localLLM,
-          onlineLLM: groqLLM,
+          onlineLLM: backendLLM,
           sessionRepo: new SessionRepository(db),
           turnRepo: new TurnRepository(db),
           summaryRepo: new SummaryRepository(db),
@@ -115,6 +119,7 @@ export function ConversationEngineProvider({ children }: { children: React.React
   }, []);
 
   const startSession = useCallback((mode: SessionMode, inputMode: InputMode = 'voice') => {
+    backendLLMRef.current?.notifySessionStart();
     engineRef.current?.startSession(mode, llmModeRef.current, inputMode);
   }, []);
 
