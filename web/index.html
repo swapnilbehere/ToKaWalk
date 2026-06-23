@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ToKaWalk — AI Walking Companion</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <span class="logo">🚶</span>
+      <div>
+        <h1>ToKaWalk</h1>
+        <p>AI Walking Companion</p>
+      </div>
+    </div>
+    <button id="stats-btn" class="stats-btn">Stats</button>
+  </header>
+
+  <main id="messages"></main>
+
+  <footer>
+    <form id="chat-form">
+      <input
+        id="message-input"
+        type="text"
+        placeholder="Ask Nova something..."
+        autocomplete="off"
+        autofocus
+      />
+      <button type="submit" id="send-btn">Send</button>
+    </form>
+  </footer>
+
+  <div id="stats-modal" class="modal hidden">
+    <div class="modal-box">
+      <button id="close-stats" class="close-btn">×</button>
+      <h2>Production Stats</h2>
+      <div id="stats-content">Loading…</div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
