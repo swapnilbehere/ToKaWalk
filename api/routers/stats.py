@@ -45,6 +45,16 @@ async def stats():
         )
         routing = await cursor.fetchall()
 
+        cutoff_30d = int((time.time() - 30 * 86400) * 1000)
+        cursor = await db.execute(
+            """SELECT AVG(overall), COUNT(*) FROM eval_results
+               WHERE run_date > ?""",
+            (cutoff_30d,),
+        )
+        eval_row = await cursor.fetchone()
+        eval_avg = round(eval_row[0], 2) if eval_row and eval_row[0] else None
+        eval_count = eval_row[1] if eval_row else 0
+
     total = total_turns or 1
     p50 = latencies[len(latencies) // 2] if latencies else 0
     p95 = latencies[int(len(latencies) * 0.95)] if latencies else 0
@@ -59,4 +69,6 @@ async def stats():
         "error_rate": round(error_count / total * 100, 1),
         "daily_sessions": [{"date": r[0], "count": r[1]} for r in daily],
         "routing_breakdown": [{"reason": r[0], "count": r[1]} for r in routing],
+        "eval_avg_score": eval_avg,
+        "eval_count": eval_count,
     }
