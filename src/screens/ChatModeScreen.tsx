@@ -52,7 +52,7 @@ export function ChatModeScreen() {
     let accumulated = '';
 
     try {
-      console.log('[ChatMode] sending text:', text);
+      if (__DEV__) console.log('[ChatMode] sending text', { chars: text.length });
       const aiResponse = await processTextInput(text, (token) => {
         accumulated += token;
         if (localStreamId === null) {
@@ -77,11 +77,12 @@ export function ChatModeScreen() {
 
       setStreamingTurnId(null);
 
-      console.log('[ChatMode] received response:', {
-        status: aiResponse.status,
-        textLength: aiResponse.text.length,
-        textPreview: aiResponse.text.slice(0, 120),
-      });
+      if (__DEV__) {
+        console.log('[ChatMode] received response', {
+          status: aiResponse.status,
+          textLength: aiResponse.text.length,
+        });
+      }
 
       if (!aiResponse.text.trim()) {
         if (localStreamId !== null) {
@@ -106,9 +107,11 @@ export function ChatModeScreen() {
       }
 
       if (localStreamId !== null) {
-        // Streaming bubble already has the text — just stamp the final status.
+        // Tokens were streamed raw; the engine's final text is markdown-stripped
+        // and sentence-capped, so adopt it as the bubble's settled content.
         const sid = localStreamId;
-        setTurns(prev => prev.map(t => t.id === sid ? { ...t, status: aiResponse.status } : t));
+        const finalText = aiResponse.text;
+        setTurns(prev => prev.map(t => t.id === sid ? { ...t, text: finalText, status: aiResponse.status } : t));
       } else {
         // No tokens were streamed (shouldn't happen); add turn directly.
         setTurns(prev => [...prev, {

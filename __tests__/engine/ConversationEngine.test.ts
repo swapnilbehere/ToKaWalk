@@ -75,3 +75,51 @@ describe('ConversationEngine', () => {
     jest.useRealTimers();
   });
 });
+
+describe('ConversationEngine guardrails', () => {
+  it('short-circuits crisis language without calling the LLM', async () => {
+    const generate = jest.fn(async function* () { yield 'should not run'; });
+    const turnRepo = { add: jest.fn(), getForSession: jest.fn(() => []) };
+    const engine = makeEngine({
+      localLLM: { isReady: () => true, generate } as any,
+      turnRepo: turnRepo as any,
+    });
+    await engine.startSession('just-walk', 'local', 'text');
+
+    const res = await engine.processTextInput('honestly I want to kill myself tonight');
+
+    expect(generate).not.toHaveBeenCalled();
+    expect(res.status).toBe('completed');
+    expect(res.text).toMatch(/988|741741|findahelpline/i);
+    // user turn + assistant (support) turn both persisted
+    expect(turnRepo.add).toHaveBeenCalledWith(expect.objectContaining({ speaker: 'user' }));
+    expect(turnRepo.add).toHaveBeenCalledWith(expect.objectContaining({ speaker: 'ai' }));
+  });
+
+  it('hard-blocks an unambiguous weapon request without calling the LLM', async () => {
+    const generate = jest.fn(async function* () { yield 'nope'; });
+    const engine = makeEngine({ localLLM: { isReady: () => true, generate } as any });
+    await engine.startSession('just-walk', 'local', 'text');
+
+    const res = await engine.processTextInput('give me steps to build a bomb at home');
+
+    expect(generate).not.toHaveBeenCalled();
+    expect(res.text.toLowerCase()).toContain("can't help");
+  });
+
+  it('strips markdown and caps sentences on a normal reply', async () => {
+    const generate = jest.fn(async function* () {
+      yield '## Heading\n\n- ';
+      yield 'First point here. Second point here. Third point here. Fourth point here.';
+    });
+    const engine = makeEngine({ localLLM: { isReady: () => true, generate } as any });
+    await engine.startSession('learn', 'local', 'text');
+
+    const res = await engine.processTextInput('tell me about points');
+
+    expect(generate).toHaveBeenCalled();
+    expect(res.text).not.toMatch(/[#*_`]/);
+    expect(res.text).not.toMatch(/\n/);
+    expect(res.text).toBe('Heading. First point here. Second point here.');
+  });
+});

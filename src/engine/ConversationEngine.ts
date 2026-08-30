@@ -6,6 +6,13 @@ import { LLMService } from '../services/llm/LLMService';
 import { SessionRepository } from '../services/storage/SessionRepository';
 import { TurnRepository } from '../services/storage/TurnRepository';
 import { SummaryRepository } from '../services/storage/SummaryRepository';
+import {
+  detectCrisis,
+  screenUserInput,
+  screenForJailbreak,
+  sanitizeResponse,
+  CRISIS_RESPONSE,
+} from './guardrails';
 
 // "by/buy" are common STT mishearings of "bye".
 const BYE_WORD = /^(bye|by|buy|goodbye|bye-?bye)$/i;
@@ -160,12 +167,14 @@ export class ConversationEngine {
     if (!this.sessionId || !this.context) {
       throw new Error('No active session');
     }
-    console.log('[Engine] Processing text input', {
-      sessionId: this.sessionId,
-      text,
-      llmMode: this.llmMode,
-      state: this.state,
-    });
+    if (__DEV__) {
+      console.log('[Engine] Processing text input', {
+        sessionId: this.sessionId,
+        chars: text.length,
+        llmMode: this.llmMode,
+        state: this.state,
+      });
+    }
     this.textStreamCallback = onToken ?? null;
     try {
       return await this.onUserSpeech(text);
@@ -227,10 +236,12 @@ export class ConversationEngine {
     if (!this.sessionActive) {
       return { text: '', status: 'completed' };
     }
-    console.log('[Engine] Received user speech/text', {
-      sessionId: this.sessionId,
-      text,
-    });
+    if (__DEV__) {
+      console.log('[Engine] Received user speech/text', {
+        sessionId: this.sessionId,
+        chars: text.length,
+      });
+    }
     this.setStatusDetail(null);
     this.consecutiveSttErrors = 0;
     this.clearSTTRestartTimer();
@@ -248,7 +259,72 @@ export class ConversationEngine {
       status: 'completed',
     });
 
+    // Deterministic guardrails run before the model. Crisis language and a
+    // narrow set of unambiguous harmful requests get a fixed reply and never
+    // reach the LLM. See engine/guardrails.ts.
+    if (detectCrisis(text)) {
+      console.warn('[Engine] Crisis language detected — returning support resource', {
+        sessionId: this.sessionId,
+      });
+      return this.emitDirectResponse(CRISIS_RESPONSE);
+    }
+    const blockedReply = screenUserInput(text);
+    if (blockedReply) {
+      console.warn('[Engine] Hard-blocked request — returning refusal', {
+        sessionId: this.sessionId,
+      });
+      return this.emitDirectResponse(blockedReply);
+    }
+    const jailbreakReply = screenForJailbreak(text);
+    if (jailbreakReply) {
+      console.warn('[Engine] Jailbreak / prompt-extraction attempt — deflecting', {
+        sessionId: this.sessionId,
+      });
+      return this.emitDirectResponse(jailbreakReply);
+    }
+
     return this.generateResponse();
+  }
+
+  /**
+   * Surfaces a fixed, non-model reply (crisis resource or hard-block refusal)
+   * through the same path a generated answer would take, so the UI, TTS, turn
+   * history, and returned promise all behave identically.
+   */
+  private async emitDirectResponse(text: string): Promise<EngineResponse> {
+    const activeSessionId = this.sessionId;
+    const activeContext = this.context;
+    if (!activeSessionId || !activeContext || !this.sessionActive) {
+      return { text: '', status: 'completed' };
+    }
+
+    this.setState('processing');
+
+    if (this.inputMode === 'voice') {
+      for (const chunk of text.split(/(\s+)/)) {
+        if (chunk) this.services.tts.feedToken(chunk);
+      }
+      this.services.tts.flush();
+      await this.services.tts.waitForIdle();
+      await new Promise((resolve) => setTimeout(resolve, TTS_TAIL_DELAY_MS));
+    } else {
+      this.textStreamCallback?.(text);
+    }
+
+    activeContext.addAssistantTurn(text, false);
+    await this.services.turnRepo.add({
+      sessionId: activeSessionId,
+      speaker: 'ai',
+      text,
+      status: 'completed',
+    });
+
+    if (this.inputMode === 'voice') {
+      this.startListening();
+    } else {
+      this.setState('idle');
+    }
+    return { text, status: 'completed' };
   }
 
   private async generateResponse(): Promise<EngineResponse> {
@@ -367,11 +443,16 @@ export class ConversationEngine {
       });
     }
 
-    activeContext.addAssistantTurn(fullResponse, interrupted);
+    // Enforce spoken-only formatting and the sentence cap regardless of what the
+    // model produced. Tokens were already streamed raw to the UI/TTS; ChatMode
+    // adopts this cleaned text as the final bubble, and TTS overshoot is minor.
+    const cleanedResponse = sanitizeResponse(fullResponse);
+
+    activeContext.addAssistantTurn(cleanedResponse, interrupted);
     await this.services.turnRepo.add({
       sessionId: activeSessionId,
       speaker: 'ai',
-      text: fullResponse,
+      text: cleanedResponse,
       status: interrupted ? 'interrupted' : 'completed',
     });
 
@@ -386,7 +467,7 @@ export class ConversationEngine {
       this.setState('idle');
     }
     return {
-      text: fullResponse,
+      text: cleanedResponse,
       status: interrupted ? 'interrupted' : 'completed',
     };
   }
