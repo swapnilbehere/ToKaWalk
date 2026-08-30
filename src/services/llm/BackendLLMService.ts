@@ -2,7 +2,10 @@ import EventSource from 'react-native-sse';
 import { LLMService } from './LLMService';
 import { LLMMessage } from '../../types';
 
-const BACKEND_URL = 'https://tokawalk-production.up.railway.app';
+// Backend host. Update this after deploying api/ (see render.yaml). Render's
+// free plan cold-starts (~50s) after idle, so the first request post-idle may
+// be slow or time out; a retry succeeds.
+const BACKEND_URL = 'https://tokawalk-api.onrender.com';
 
 function makeSessionId(): string {
   return `m-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;

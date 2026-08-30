@@ -1,0 +1,26 @@
+# Render Blueprint — deploys the FastAPI backend in api/ as a free web service.
+#
+# Deploy:
+#   1. render.com → sign in with GitHub (free, no card for the free plan)
+#   2. New + → Blueprint → pick the ToKaWalk repo → Apply
+#   3. When prompted, paste the Groq API key for GROQ_API_KEY
+#   4. First deploy gives a URL like https://tokawalk-api.onrender.com
+#
+# Note: the free plan spins the service down after ~15 min idle; the next
+# request cold-starts in ~50s. Fine for a demo; hit /health to pre-warm.
+services:
+  - type: web
+    name: tokawalk-api
+    runtime: python
+    rootDir: api
+    plan: free
+    region: oregon
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false
+      - key: DB_PATH
+        value: /tmp/tokawalk.db

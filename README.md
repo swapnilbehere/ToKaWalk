@@ -4,7 +4,7 @@ An offline-first voice AI companion for Android walkers, with intelligent model 
 production observability, and a QLoRA fine-tuned on-device model.
 
 **Live demo:** https://to-ka-walk.vercel.app
-**API:** https://tokawalk-production.up.railway.app
+**API:** https://tokawalk-api.onrender.com
 **On-device model:** https://huggingface.co/swapnilbehere/tokawalk-qwen-1.5b *(after fine-tune)*
 
 ---
