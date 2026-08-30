@@ -12,6 +12,24 @@ const DEFAULTS: SQLitePreferences = {
   hasSeenOnlineTooltip: false,
 };
 
+const VALID_VAD: VADSensitivity[] = ['indoor', 'outdoor'];
+const VALID_MODE: SessionMode[] = ['just-walk', 'brain-dump', 'journal', 'learn'];
+const VALID_LLM: LLMMode[] = ['local', 'online'];
+
+const TTS_RATE_MIN = 0.1;
+const TTS_RATE_MAX = 2.0;
+
+function oneOf<T extends string>(value: string | undefined, allowed: T[], fallback: T): T {
+  return allowed.includes(value as T) ? (value as T) : fallback;
+}
+
+function parseRate(value: string | undefined): number {
+  if (value === undefined) return DEFAULTS.ttsRate;
+  const n = parseFloat(value);
+  if (!Number.isFinite(n)) return DEFAULTS.ttsRate;
+  return Math.min(TTS_RATE_MAX, Math.max(TTS_RATE_MIN, n));
+}
+
 export class PreferencesRepository {
   constructor(private db: DB) {}
 
@@ -22,10 +40,10 @@ export class PreferencesRepository {
       map[row.key as string] = row.value as string;
     }
     return {
-      vadSensitivity: (map.vadSensitivity as VADSensitivity) ?? DEFAULTS.vadSensitivity,
-      defaultMode: (map.defaultMode as SessionMode) ?? DEFAULTS.defaultMode,
-      llmMode: (map.llmMode as LLMMode) ?? DEFAULTS.llmMode,
-      ttsRate: map.ttsRate ? parseFloat(map.ttsRate) : DEFAULTS.ttsRate,
+      vadSensitivity: oneOf(map.vadSensitivity, VALID_VAD, DEFAULTS.vadSensitivity),
+      defaultMode: oneOf(map.defaultMode, VALID_MODE, DEFAULTS.defaultMode),
+      llmMode: oneOf(map.llmMode, VALID_LLM, DEFAULTS.llmMode),
+      ttsRate: parseRate(map.ttsRate),
       hasSeenOnlineTooltip: map.hasSeenOnlineTooltip === 'true',
       // Always empty — real value is loaded from Keychain by SecureStorage.
       groqApiKey: '',

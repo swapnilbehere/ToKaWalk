@@ -123,3 +123,60 @@ describe('ConversationEngine guardrails', () => {
     expect(res.text).toBe('Heading. First point here. Second point here.');
   });
 });
+
+describe('ConversationEngine adversarial input', () => {
+  it('ignores empty / whitespace text without persisting a turn or calling the LLM', async () => {
+    const generate = jest.fn(async function* () { yield 'x'; });
+    const turnRepo = { add: jest.fn(), getForSession: jest.fn(() => []) };
+    const engine = makeEngine({
+      localLLM: { isReady: () => true, generate } as any,
+      turnRepo: turnRepo as any,
+    });
+    await engine.startSession('just-walk', 'local', 'text');
+
+    for (const bad of ['', '   ', '\n\t ']) {
+      const res = await engine.processTextInput(bad);
+      expect(res).toEqual({ text: '', status: 'completed' });
+    }
+    expect(generate).not.toHaveBeenCalled();
+    expect(turnRepo.add).not.toHaveBeenCalled();
+  });
+
+  it('does not persist a giant raw turn — context is clamped', async () => {
+    const generate = jest.fn(async function* () { yield 'ok.'; });
+    const engine = makeEngine({ localLLM: { isReady: () => true, generate } as any });
+    await engine.startSession('brain-dump', 'local', 'text');
+
+    await engine.processTextInput('y'.repeat(40_000));
+    const ctxChars = (engine as any).context
+      .getMessages()
+      .reduce((s: number, m: any) => s + m.content.length, 0);
+    // system prompt + one clamped user turn + short assistant turn
+    expect(ctxChars).toBeLessThan(6000);
+  });
+
+  it('throws a clear error when no session is active', async () => {
+    const engine = makeEngine();
+    await expect(engine.processTextInput('hi')).rejects.toThrow('No active session');
+  });
+
+  it('survives endSession() called while a generation is in flight', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    const generate = jest.fn(async function* () {
+      yield 'part';
+      await gate;
+      yield ' two';
+    });
+    const engine = makeEngine({ localLLM: { isReady: () => true, generate, waitForIdle: () => gate } as any });
+    await engine.startSession('just-walk', 'local', 'text');
+
+    const pending = engine.processTextInput('start something long');
+    await engine.endSession();
+    release();
+    await expect(pending).resolves.toEqual(
+      expect.objectContaining({ status: expect.stringMatching(/completed|interrupted/) }),
+    );
+    expect(engine.state).toBe('idle');
+  });
+});

@@ -1,6 +1,9 @@
 import Voice, { SpeechResultsEvent, SpeechErrorEvent } from '@react-native-voice/voice';
 import { NativeModules, Platform } from 'react-native';
-import { STTErrorInfo, STTErrorKind, VADSensitivity } from '../../types';
+import { STTErrorInfo, VADSensitivity } from '../../types';
+import { mapErrorCode } from './androidErrorCodes';
+
+export { mapErrorCode };
 
 function getDeviceLocale(): string {
   try {
@@ -11,37 +14,6 @@ function getDeviceLocale(): string {
     return NativeModules.I18nManager?.localeIdentifier?.replace('_', '-') ?? 'en-US';
   }
   return 'en-US';
-}
-
-// Android SpeechRecognizer error code → STTErrorKind
-function mapErrorCode(code: string): STTErrorKind {
-  switch (code) {
-    case '1':  // ERROR_NETWORK_TIMEOUT
-    case '2':  // ERROR_NETWORK
-      return 'network_error';
-    case '11': // ERROR_SERVER_DISCONNECTED — on Samsung fires as a transient
-               // recognizer lifecycle reset (not a real network failure); treat
-               // as soft timeout so it never counts toward the degraded limit.
-      return 'speech_timeout';
-    case '3':  // ERROR_AUDIO
-    case '5':  // ERROR_CLIENT
-    case '8':  // ERROR_RECOGNIZER_BUSY
-    case '10': // ERROR_TOO_MANY_REQUESTS
-      return 'client_error';
-    case '4':  // ERROR_SERVER
-    case '9':  // ERROR_INSUFFICIENT_PERMISSIONS
-    case '12': // ERROR_LANGUAGE_NOT_SUPPORTED
-    case '13': // ERROR_LANGUAGE_UNAVAILABLE
-    case '14': // ERROR_CANNOT_CHECK_SUPPORT
-    case '15': // ERROR_CANNOT_LISTEN_TO_DOWNLOAD_EVENTS
-      return 'unavailable';
-    case '6':  // ERROR_SPEECH_TIMEOUT (~10s of silence)
-      return 'speech_timeout';
-    case '7':  // ERROR_NO_MATCH
-      return 'no_match';
-    default:
-      return 'unknown';
-  }
 }
 
 export class STTService {

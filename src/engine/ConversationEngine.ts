@@ -15,8 +15,11 @@ import {
 } from './guardrails';
 
 // "by/buy" are common STT mishearings of "bye".
-const BYE_WORD = /^(bye|by|buy|goodbye|bye-?bye)$/i;
-const NOVA_WORD = /nova/i;
+// Trailing punctuation tolerated ("Bye," / "Nova.") — STT and users both add it.
+const BYE_WORD = /^["'“]?(bye|by|buy|goodbye|bye-?bye)["'”.,!?]*$/i;
+// Whole-word only — a bare "nova", NOT a substring, so "innovative", "renovate",
+// "supernova", "Casanova" don't end the session.
+const NOVA_WORD = /^["'“]?nova["'”.,!?]*$/i;
 const SUMMARY_TIMEOUT_MS = 30_000;
 const STT_RESTART_DELAY_MS = 1_500;
 const MAX_CONSECUTIVE_STT_ERRORS = 3;
@@ -234,6 +237,11 @@ export class ConversationEngine {
 
   private async onUserSpeech(text: string): Promise<EngineResponse> {
     if (!this.sessionActive) {
+      return { text: '', status: 'completed' };
+    }
+    // Ignore empty / whitespace-only input instead of persisting a blank turn
+    // and asking the model to respond to nothing.
+    if (!text.trim()) {
       return { text: '', status: 'completed' };
     }
     if (__DEV__) {

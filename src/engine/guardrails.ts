@@ -102,6 +102,23 @@ export function screenForJailbreak(text: string): string | null {
 export const MAX_REPLY_SENTENCES = 3;
 
 /**
+ * Hard character backstop (~4 spoken sentences). The sentence cap does nothing
+ * when the model emits an unpunctuated wall of text or newline-delimited
+ * fragments, so a length ceiling has to catch that case too.
+ */
+export const MAX_REPLY_CHARS = 600;
+
+function clampChars(text: string): string {
+  if (text.length <= MAX_REPLY_CHARS) return text;
+  const head = text.slice(0, MAX_REPLY_CHARS);
+  // Prefer the last sentence boundary, then the last word boundary.
+  const lastStop = Math.max(head.lastIndexOf('. '), head.lastIndexOf('! '), head.lastIndexOf('? '));
+  if (lastStop >= MAX_REPLY_CHARS - 300) return head.slice(0, lastStop + 1).trim();
+  const lastSpace = head.lastIndexOf(' ');
+  return `${(lastSpace > 0 ? head.slice(0, lastSpace) : head).trimEnd()}…`;
+}
+
+/**
  * Strips markdown and clamps the reply to `maxSentences`. The on-device model
  * ignores "no markdown / keep it short" instructions often enough that this has
  * to be enforced after generation — the app is eyes-free and the reply is read
@@ -129,10 +146,16 @@ export function sanitizeResponse(
   out = out.replace(/^\s{0,3}(?:[-*+]|\d+[.)])\s+/gm, '');
   // Markdown links -> link text.
   out = out.replace(/\[([^\]]+)\]\([^)]*\)/g, '$1');
-  // Bold / italic / strikethrough wrappers around content.
-  out = out.replace(/(\*\*|__|\*|_|~~)(?=\S)(.*?\S)\1/g, '$2');
-  // Stray emphasis lines / leftover markers.
+  // Bold / italic / strikethrough wrappers around content. Run to a fixed point
+  // so nested markers (**_text_**) are fully unwrapped, not just the outer pair.
+  for (let i = 0; i < 4; i++) {
+    const next = out.replace(/(\*\*|__|\*|_|~~)(?=\S)([\s\S]*?\S)\1/g, '$2');
+    if (next === out) break;
+    out = next;
+  }
+  // Stray / unmatched emphasis characters and marker-only lines.
   out = out.replace(/^\s*[*_~]{1,3}\s*$/gm, '');
+  out = out.replace(/[*_~`]{1,3}/g, '');
   // Collapse newlines and runs of spaces into single spaces.
   out = out.replace(/\s*\n+\s*/g, ' ').replace(/[ \t]{2,}/g, ' ').trim();
 
@@ -141,9 +164,12 @@ export function sanitizeResponse(
     out = sentences.slice(0, maxSentences).join(' ').trim();
   }
 
+  // Length backstop for text the sentence splitter can't segment.
+  out = clampChars(out);
+
   // Never hand back an empty string for a non-empty input.
   if (!out && text.trim()) {
-    return text.replace(/\s+/g, ' ').trim();
+    return clampChars(text.replace(/\s+/g, ' ').trim());
   }
   return out;
 }

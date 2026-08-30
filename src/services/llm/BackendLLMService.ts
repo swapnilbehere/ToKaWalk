@@ -92,7 +92,11 @@ export class BackendLLMService implements LLMService {
     });
 
     eventSource.addEventListener('message', event => {
-      const data = event.data?.trim() ?? '';
+      // Keep the raw payload — LLM tokens routinely carry a leading space
+      // (" there", " world"); trimming here would collapse word boundaries.
+      // Only the trimmed copy is used for sentinel/empty detection.
+      const raw = (event.data ?? '').replace(/\r?\n$/, '');
+      const data = raw.trim();
       if (!data) return;
 
       if (data.startsWith('[DONE]')) {
@@ -107,7 +111,7 @@ export class BackendLLMService implements LLMService {
       }
 
       tokenCount += 1;
-      tokenQueue.push(data);
+      tokenQueue.push(raw);
       if (wakeConsumer) {
         wakeConsumer();
         wakeConsumer = null;
