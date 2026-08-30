@@ -31,7 +31,15 @@ export function WalkModeScreen() {
   useEffect(() => {
     if (!ready) return;
     startSession(mode, 'voice');
-    return () => endSession();
+    return () => {
+      // When switching to ChatMode via navigation.replace(), that screen mounts
+      // and starts its own session *before* this cleanup runs. A blind
+      // endSession() here would tear down the session ChatMode just created,
+      // leaving it with "No active session". navigatedAway is set only when the
+      // user leaves via the Chat/End buttons; End already ends the session
+      // explicitly, so skipping here is safe for both paths.
+      if (!navigatedAway.current) endSession();
+    };
   }, [ready, mode, startSession, endSession]);
 
   useEffect(() => {
